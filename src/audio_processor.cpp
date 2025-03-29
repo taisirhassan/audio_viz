@@ -129,17 +129,17 @@ bool AudioProcessor::loadAudioFile(const std::string& filePath) {
     return true;
 }
 
-int AudioProcessor::paCallback(const void* inputBuffer, void* outputBuffer,
+int AudioProcessor::paCallback(const void* inputBuffer, [[maybe_unused]] void* outputBuffer,
                                unsigned long framesPerBuffer,
-                               const PaStreamCallbackTimeInfo* timeInfo,
-                               PaStreamCallbackFlags statusFlags,
+                               [[maybe_unused]] const PaStreamCallbackTimeInfo* timeInfo,
+                               [[maybe_unused]] PaStreamCallbackFlags statusFlags,
                                void* userData) {
     AudioProcessor* processor = static_cast<AudioProcessor*>(userData);
     float* in = (float*)inputBuffer;
     
     if (processor->m_isPlayingFile && processor->m_sndFile) {
         sf_count_t count = sf_read_float(processor->m_sndFile, processor->m_audioData.data(), framesPerBuffer * processor->m_numChannels);
-        if (count < framesPerBuffer * processor->m_numChannels) {
+        if (static_cast<unsigned long>(count) < framesPerBuffer * processor->m_numChannels) {
             sf_seek(processor->m_sndFile, 0, SEEK_SET);  // Loop back to the beginning of the file
         }
     } else {

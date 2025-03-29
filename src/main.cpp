@@ -20,7 +20,7 @@ Visualizer* visualizer;
 // Declare the openFileDialog function (implemented in file_dialog_mac.mm)
 std::string openFileDialog();
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+void framebuffer_size_callback([[maybe_unused]] GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 

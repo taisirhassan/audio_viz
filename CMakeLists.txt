@@ -9,6 +9,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(APPLE)
     # macOS specific settings
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Build architectures for macOS")
+    
+    # Set Homebrew prefix for M1/Intel Macs
+    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
+        set(HOMEBREW_PREFIX "/opt/homebrew" CACHE PATH "Homebrew installation prefix")
+    else()
+        set(HOMEBREW_PREFIX "/usr/local" CACHE PATH "Homebrew installation prefix")
+    endif()
+    
+    # Add Homebrew paths
+    list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
+    include_directories(${HOMEBREW_PREFIX}/include)
+    link_directories(${HOMEBREW_PREFIX}/lib)
+    
     set(EXTRA_LIBS
         "-framework OpenGL"
         "-framework CoreAudio"
@@ -16,23 +29,11 @@ if(APPLE)
         "-framework AudioUnit"
         "-framework CoreServices"
         "-framework Cocoa"
+        "-framework UniformTypeIdentifiers"
     )
-    
-    # Set Homebrew prefix for M1 Macs
-    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
-        set(HOMEBREW_PREFIX "/opt/homebrew")
-    else()
-        set(HOMEBREW_PREFIX "/usr/local")
-    endif()
-    
-    # Add Homebrew include and lib directories
-    include_directories(${HOMEBREW_PREFIX}/include)
-    link_directories(${HOMEBREW_PREFIX}/lib)
 elseif(WIN32)
-    # Windows specific settings
     set(EXTRA_LIBS opengl32)
 else()
-    # Linux specific settings
     set(EXTRA_LIBS
         GL
         X11
@@ -44,53 +45,57 @@ endif()
 # Find required packages
 find_package(OpenGL REQUIRED)
 
-# Find GLFW package specifically
-find_package(glfw3 3.3 REQUIRED)
+# Find GLFW
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GLFW REQUIRED glfw3)
 
-# Find other required libraries
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
+# Find GLEW
+if(APPLE)
+    # On macOS, use pkg-config for GLEW
     pkg_check_modules(GLEW REQUIRED glew)
-    pkg_check_modules(GLM REQUIRED glm)
-    pkg_check_modules(FFTW REQUIRED fftw3f)
-    pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
-    pkg_check_modules(SNDFILE REQUIRED sndfile)
 else()
     find_package(GLEW REQUIRED)
-    find_package(GLM REQUIRED)
-    
-    find_library(FFTW_LIBRARIES NAMES fftw3f)
-    find_library(PORTAUDIO_LIBRARIES NAMES portaudio)
-    find_library(SNDFILE_LIBRARIES NAMES sndfile)
-    
-    find_path(FFTW_INCLUDE_DIRS NAMES fftw3.h)
-    find_path(PORTAUDIO_INCLUDE_DIRS NAMES portaudio.h)
-    find_path(SNDFILE_INCLUDE_DIRS NAMES sndfile.h)
+endif()
+
+# Find other libraries
+pkg_check_modules(GLM REQUIRED glm)
+pkg_check_modules(FFTW REQUIRED fftw3f)
+pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
+pkg_check_modules(SNDFILE REQUIRED sndfile)
+
+# Verify ImGui directory exists
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/extern/imgui")
+if(NOT EXISTS "${IMGUI_DIR}")
+    message(FATAL_ERROR "ImGui directory not found at ${IMGUI_DIR}. Please clone ImGui repository.")
 endif()
 
 # Add ImGui source files
-set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/extern/imgui)
-if(NOT EXISTS ${IMGUI_DIR})
-    message(FATAL_ERROR "ImGui directory not found. Please clone ImGui to ${IMGUI_DIR}")
-endif()
-
 set(IMGUI_SOURCES
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_demo.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    "${IMGUI_DIR}/imgui.cpp"
+    "${IMGUI_DIR}/imgui_demo.cpp"
+    "${IMGUI_DIR}/imgui_draw.cpp"
+    "${IMGUI_DIR}/imgui_tables.cpp"
+    "${IMGUI_DIR}/imgui_widgets.cpp"
+    "${IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
+    "${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp"
 )
+
+# Verify all ImGui source files exist
+foreach(SOURCE_FILE ${IMGUI_SOURCES})
+    if(NOT EXISTS "${SOURCE_FILE}")
+        message(FATAL_ERROR "ImGui source file not found: ${SOURCE_FILE}")
+    endif()
+endforeach()
 
 # Source files
 set(SOURCES
     src/main.cpp
     src/audio_processor.cpp
     src/visualizer.cpp
-    ${IMGUI_SOURCES}
 )
+
+# Add ImGui sources to the project
+list(APPEND SOURCES ${IMGUI_SOURCES})
 
 # Add platform-specific source files
 if(APPLE)
@@ -108,6 +113,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}/backends
     ${OPENGL_INCLUDE_DIR}
     ${GLEW_INCLUDE_DIRS}
+    ${GLFW_INCLUDE_DIRS}
     ${GLM_INCLUDE_DIRS}
     ${FFTW_INCLUDE_DIRS}
     ${PORTAUDIO_INCLUDE_DIRS}
@@ -117,7 +123,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${OPENGL_LIBRARIES}
-    glfw
+    ${GLFW_LIBRARIES}
     GLEW
     ${GLM_LIBRARIES}
     ${FFTW_LIBRARIES}
@@ -128,8 +134,33 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 # Set Objective-C++ compilation for macOS file dialog
 if(APPLE)
-    set_source_files_properties(src/file_dialog_mac.mm PROPERTIES COMPILE_FLAGS "-x objective-c++")
+    set_source_files_properties(
+        src/file_dialog_mac.mm 
+        PROPERTIES 
+        COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
+    )
 endif()
 
 # Copy shader files to build directory
-file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_BINARY_DIR})
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/shaders ${CMAKE_BINARY_DIR}/shaders
+)
+
+# Enable warnings
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+else()
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+endif()
+
+# Output configuration messages
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Using Homebrew prefix: ${HOMEBREW_PREFIX}")
+message(STATUS "GLFW libraries: ${GLFW_LIBRARIES}")
+message(STATUS "GLEW include dirs: ${GLEW_INCLUDE_DIRS}")
+message(STATUS "ImGui directory: ${IMGUI_DIR}")
+foreach(lib ${EXTRA_LIBS})
+    message(STATUS "Extra library: ${lib}")
+endforeach()
