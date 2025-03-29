@@ -18,6 +18,12 @@ public:
     const std::vector<float>& getBandEnergies() const { return m_bandEnergies; }
     const std::vector<float>& getAudioData() const { return m_audioData; }
 
+    // Add getters for visualization parameters
+    float getSmoothingFactor() const { return m_smoothingFactor; }
+    float getNormalizationFactor() const { return m_normalizationFactor; }
+    void setSmoothingFactor(float factor) { m_smoothingFactor = factor; }
+    void setNormalizationFactor(float factor) { m_normalizationFactor = factor; }
+
 private:
     static int paCallback(const void* inputBuffer, void* outputBuffer,
                           unsigned long framesPerBuffer,
@@ -31,6 +37,7 @@ private:
     std::vector<float> m_audioData;
     std::vector<float> m_fftData;
     std::vector<float> m_bandEnergies;
+    std::vector<float> m_previousBandEnergies;  // For smoothing
     fftwf_plan m_fftPlan;
     bool m_isPlayingFile;
 
@@ -38,4 +45,8 @@ private:
     int m_framesPerBuffer;
     int m_numChannels;
     int m_numBands;
+
+    // Visualization parameters
+    float m_smoothingFactor;     // Controls how quickly the visualization responds to changes
+    float m_normalizationFactor; // Controls the overall scale of the visualization
 };

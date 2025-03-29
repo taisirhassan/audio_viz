@@ -14,29 +14,28 @@
 @end
 
 std::string openFileDialog() {
-    @autoreleasepool {
-        NSOpenPanel* openDlg = [NSOpenPanel openPanel];
-        [openDlg setCanChooseFiles:YES];
-        [openDlg setCanChooseDirectories:NO];
-        [openDlg setAllowsMultipleSelection:NO];
-        
-        if (@available(macOS 12.0, *)) {
-            [openDlg setAllowedContentTypes:@[
-                UTTypeAudio,
-                [UTType typeWithFilenameExtension:@"wav"],
-                [UTType typeWithFilenameExtension:@"mp3"],
-                [UTType typeWithFilenameExtension:@"ogg"]
-            ]];
-        } else {
-            FileDialogDelegate* delegate = [[FileDialogDelegate alloc] init];
-            delegate.allowedExtensions = @[@"wav", @"mp3", @"ogg"];
-            [openDlg setDelegate:delegate];
-        }
-
-        if ([openDlg runModal] == NSModalResponseOK) {
-            NSURL* url = [openDlg URL];
-            return std::string([[url path] UTF8String]);
-        }
+    NSOpenPanel* openDlg = [NSOpenPanel openPanel];
+    
+    if (@available(macOS 12.0, *)) {
+        // Modern API for macOS 12.0 and later
+        NSArray* contentTypes = @[
+            UTTypeAudio,
+            UTTypeMP3,
+            UTTypeWAV
+        ];
+        [openDlg setAllowedContentTypes:contentTypes];
+    } else {
+        // Fallback for older macOS versions
+        [openDlg setAllowedFileTypes:@[@"wav", @"mp3", @"ogg"]];
     }
+    
+    [openDlg setCanChooseFiles:YES];
+    [openDlg setCanChooseDirectories:NO];
+    
+    if ([openDlg runModal] == NSModalResponseOK) {
+        NSURL* url = [[openDlg URLs] objectAtIndex:0];
+        return std::string([[url path] UTF8String]);
+    }
+    
     return "";
 }

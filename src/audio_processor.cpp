@@ -4,7 +4,8 @@
 
 AudioProcessor::AudioProcessor()
     : m_stream(nullptr), m_sndFile(nullptr), m_isPlayingFile(false),
-      m_sampleRate(0), m_framesPerBuffer(0), m_numChannels(0), m_numBands(64) {}
+      m_sampleRate(0), m_framesPerBuffer(0), m_numChannels(0), m_numBands(64),
+      m_smoothingFactor(0.3f), m_normalizationFactor(1.0f) {}
 
 AudioProcessor::~AudioProcessor() {
     if (m_stream) {
@@ -94,15 +95,34 @@ void AudioProcessor::processAudio() {
     // Execute FFT
     fftwf_execute(m_fftPlan);
 
-    // Calculate band energies
+    // Initialize previous band energies if needed
+    if (m_previousBandEnergies.empty()) {
+        m_previousBandEnergies.resize(m_numBands, 0.0f);
+    }
+
+    // Calculate band energies with improved frequency distribution
     for (int i = 0; i < m_numBands; i++) {
         float sum = 0;
         int start = (int)pow(2, (float)i / m_numBands * log2(m_framesPerBuffer / 2));
         int end = (int)pow(2, (float)(i + 1) / m_numBands * log2(m_framesPerBuffer / 2));
+        
+        // Use logarithmic frequency distribution for better bass response
         for (int j = start; j < end; j++) {
-            sum += sqrt(m_fftData[j] * m_fftData[j] + m_fftData[m_framesPerBuffer - j] * m_fftData[m_framesPerBuffer - j]);
+            float magnitude = sqrt(m_fftData[j] * m_fftData[j] + 
+                                 m_fftData[m_framesPerBuffer - j] * m_fftData[m_framesPerBuffer - j]);
+            // Apply frequency-dependent scaling
+            float scale = 1.0f / (1.0f + j * 0.1f);
+            sum += magnitude * scale;
         }
-        m_bandEnergies[i] = sum / (end - start);
+        
+        // Apply smoothing
+        float currentEnergy = sum / (end - start);
+        m_bandEnergies[i] = m_smoothingFactor * currentEnergy + 
+                          (1.0f - m_smoothingFactor) * m_previousBandEnergies[i];
+        m_previousBandEnergies[i] = m_bandEnergies[i];
+        
+        // Apply normalization
+        m_bandEnergies[i] *= m_normalizationFactor;
     }
 }
 

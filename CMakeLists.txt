@@ -53,8 +53,15 @@ pkg_check_modules(GLFW REQUIRED glfw3)
 if(APPLE)
     # On macOS, use pkg-config for GLEW
     pkg_check_modules(GLEW REQUIRED glew)
+    
+    # Add GLFW framework path
+    find_library(GLFW_LIBRARY NAMES glfw glfw3 PATHS ${HOMEBREW_PREFIX}/lib)
+    if(NOT GLFW_LIBRARY)
+        message(FATAL_ERROR "GLFW library not found")
+    endif()
 else()
     find_package(GLEW REQUIRED)
+    find_package(GLFW3 REQUIRED)
 endif()
 
 # Find other libraries
@@ -123,7 +130,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${OPENGL_LIBRARIES}
-    ${GLFW_LIBRARIES}
+    ${GLFW_LIBRARY}
     GLEW
     ${GLM_LIBRARIES}
     ${FFTW_LIBRARIES}

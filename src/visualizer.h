@@ -29,16 +29,22 @@ private:
     void renderCircular();
     void renderWave();
     glm::vec3 getColor(float t);
+    glm::vec3 interpolateColor(float hue, float energy);
 
     AudioProcessor& m_audioProcessor;
-    Shader m_shader;
-    GLuint m_VAO, m_VBO;
     VisualizationStyle m_style;
     float m_rotationSpeed;
     float m_zoomLevel;
     int m_width;
     int m_height;
+    
+    // OpenGL objects
+    GLuint m_VAO;
+    GLuint m_VBO;
+    GLuint m_shaderProgram;
+    Shader m_shader;
 
+    // Colors
     glm::vec3 m_lowColor;
     glm::vec3 m_midColor;
     glm::vec3 m_highColor;
