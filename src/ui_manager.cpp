@@ -5,10 +5,19 @@
 #include <iostream>
 #include <vector>
 #include <imgui.h>
+#include <nfd.h>
 
-// Declare the platform-specific file dialog function
-// This might eventually move into a platform abstraction layer
-std::string openFileDialog();
+// Include GLFW header for the helper function
+#if defined(_WIN32)
+    #define GLFW_EXPOSE_NATIVE_WIN32
+#elif defined(__APPLE__)
+    #define GLFW_EXPOSE_NATIVE_COCOA
+#else // Assume X11
+    #define GLFW_EXPOSE_NATIVE_X11
+#endif
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h> // For native handles
+#include <nfd_glfw3.h>
 
 UIManager::UIManager(AudioProcessor& processor, Visualizer& visualizer)
     : m_audioProcessor(processor),
@@ -17,6 +26,14 @@ UIManager::UIManager(AudioProcessor& processor, Visualizer& visualizer)
 {
     // Ensure initial style matches visualizer's default
     m_currentStyle = static_cast<int>(m_visualizer.getStyle());
+
+    // Initialize NFD
+    NFD_Init();
+}
+
+UIManager::~UIManager() {
+    // Cleanup NFD
+    NFD_Quit();
 }
 
 void UIManager::render(GLFWwindow* window) {
@@ -139,25 +156,52 @@ void UIManager::render(GLFWwindow* window) {
 
     // File playback controls (using m_audioProcessor directly)
     if (ImGui::CollapsingHeader("File Playback", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool fileLoaded = m_audioProcessor.hasLoadedFile();
-
         if (ImGui::Button("Open Audio File")) {
-            std::string filePath = openFileDialog();
-            if (!filePath.empty()) {
-                m_audioProcessor.loadAudioFile(filePath);
-                fileLoaded = m_audioProcessor.hasLoadedFile(); // Re-check status
+            nfdu8char_t *outPath = NULL;
+            nfdu8filteritem_t filterItem[1] = { { "Audio Files", "wav,mp3,ogg,aiff,flac,m4a" } };
+            
+            // Prepare arguments for NFD
+            nfdopendialognargs_t args = {0};
+            args.filterList = filterItem;
+            args.filterCount = 1;
+            
+            // Use the helper function from nfd_glfw3.h to get the native window handle
+            bool handleOk = NFD_GetNativeWindowFromGLFWWindow(window, &args.parentWindow);
+            if (!handleOk) {
+                std::cerr << "Error getting native window handle" << std::endl;
+            }
+            
+            nfdresult_t result = NFD_OpenDialogN_With(&outPath, &args);
+            
+            if (result == NFD_OKAY) {
+                std::cout << "NFD Success! Path: " << outPath << std::endl;
+                std::string pathStr = outPath; // Convert to std::string
+                if (!pathStr.empty()) {
+                    m_audioProcessor.loadAudioFile(pathStr);
+                }
+                NFD_FreePathN(outPath); // Remember to free the path!
+            } else if (result == NFD_CANCEL) {
+                std::cout << "User pressed cancel." << std::endl;
+            } else {
+                printf("NFD Error: %s\n", NFD_GetError());
             }
         }
-        
-        if (fileLoaded) {
-            bool isCurrentlyPlaying = m_audioProcessor.isCurrentlyPlayingFile();
-            ImGui::SameLine();
-            if (ImGui::Button(isCurrentlyPlaying ? "Pause" : "Play")) {
-                m_audioProcessor.setFilePlayback(!isCurrentlyPlaying);
+
+        ImGui::SameLine();
+        // Add Play/Pause/Stop buttons (using AudioProcessor state)
+        if (m_audioProcessor.hasLoadedFile()) {
+            if (m_audioProcessor.isCurrentlyPlayingFile()) {
+                if (ImGui::Button("Pause")) {
+                    m_audioProcessor.setFilePlayback(false);
+                }
+            } else {
+                if (ImGui::Button("Play")) {
+                    m_audioProcessor.setFilePlayback(true);
+                }
             }
             ImGui::SameLine();
             if (ImGui::Button("Stop File & Use Mic")) {
-                m_audioProcessor.switchToInputDevice();
+                m_audioProcessor.switchToInputDevice(); // This now also stops playback
             }
         }
     }

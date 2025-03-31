@@ -1,15 +1,20 @@
 #pragma once
 
+// GLEW must be included before any other OpenGL headers
 #include <GL/glew.h>
+
+// Other OpenGL-related headers
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+// Standard library and project headers
 #include <vector>
+#include <memory>
 #include "shader.h"
 #include "audio_processor.h"
 #include "IVisualizationStyle.h"
-#include <memory>
 
 enum class VisualizationStyle {
     BAR_GRAPH,

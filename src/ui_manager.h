@@ -16,7 +16,7 @@ class Visualizer;
 class UIManager {
 public:
     UIManager(AudioProcessor& processor, Visualizer& visualizer);
-    ~UIManager() = default;
+    ~UIManager();
 
     void render(GLFWwindow* window);
 

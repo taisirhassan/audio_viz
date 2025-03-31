@@ -102,31 +102,42 @@ set(SOURCES
 # Add ImGui sources to the project
 list(APPEND SOURCES ${IMGUI_SOURCES})
 
-# Add platform-specific source files
-if(APPLE)
-    list(APPEND SOURCES src/file_dialog_mac.mm)
+# Add nativefiledialog-extended
+# Ensure NFD source path exists (User needs to clone/download it)
+set(NFD_DIR "${CMAKE_SOURCE_DIR}/extern/nativefiledialog-extended")
+if(NOT EXISTS "${NFD_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "nativefiledialog-extended not found at ${NFD_DIR}. Please clone or download it.")
 endif()
+add_subdirectory(${NFD_DIR} ${CMAKE_BINARY_DIR}/nfd-build)
 
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# Include directories
+# Add compile definitions to ensure GLEW is included first
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    GLEW_STATIC
+    GL_SILENCE_DEPRECATION
+)
+
+# Include directories - Note: GLEW must be first
 target_include_directories(${PROJECT_NAME} PRIVATE
+    ${GLEW_INCLUDE_DIRS}  # GLEW must be first
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/include
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${OPENGL_INCLUDE_DIR}
-    ${GLEW_INCLUDE_DIRS}
     ${GLFW_INCLUDE_DIRS}
     ${GLM_INCLUDE_DIRS}
     ${FFTW_INCLUDE_DIRS}
     ${PORTAUDIO_INCLUDE_DIRS}
     ${SNDFILE_INCLUDE_DIRS}
+    ${NFD_DIR}/src/include  # Add NFD include directory
 )
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
+    nfd
     ${OPENGL_LIBRARIES}
     ${GLFW_LIBRARIES}
     ${GLEW_LIBRARIES}
@@ -137,13 +148,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${EXTRA_LIBS}
 )
 
-# Set Objective-C++ compilation for macOS file dialog
+# Ensure NFD dependencies are linked (add required frameworks for macOS)
 if(APPLE)
-    set_source_files_properties(
-        src/file_dialog_mac.mm 
-        PROPERTIES 
-        COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
-    )
+    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework AppKit" "-framework UniformTypeIdentifiers")
 endif()
 
 # Copy shader files to build directory

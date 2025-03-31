@@ -8,6 +8,7 @@
 #include "visualizer.h"
 #include "ui_manager.h"
 #include <iostream>
+#include <nfd.h> // Include NFD header
 
 Application::Application() = default;
 
@@ -119,6 +120,9 @@ bool Application::initModules() {
     m_uiManager = new UIManager(*m_audioProcessor, *m_visualizer);
     // No specific init needed for UIManager currently
 
+    // Initialize NFD
+    NFD_Init();
+
     return true;
 }
 
@@ -184,6 +188,9 @@ void Application::cleanup() {
     if (ImGui::GetCurrentContext()) { // Check if context exists before destroying
         ImGui::DestroyContext();
     }
+
+    // Deinitialize NFD
+    NFD_Quit();
 
     // Cleanup modules (delete allocated memory)
     delete m_uiManager;
