@@ -1,6 +1,7 @@
 # Audio Visualizer
 
-<img width="1200" alt="Audio Visualizer Screenshot" src="screenshots/audio_viz_screenshot.png">
+<img width="1280" alt="image" src="https://github.com/user-attachments/assets/46efb426-dd9b-42b8-b13b-982ce3b2413d" />
+
 
 An interactive real-time audio visualizer built with C++ and OpenGL. This application provides dynamic visualizations of audio input, supporting both live audio and file playback.
 
