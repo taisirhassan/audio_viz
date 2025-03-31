@@ -6,47 +6,88 @@
 #include <vector>
 #include <string>
 
+struct AudioDevice {
+    PaDeviceIndex index;
+    std::string name;
+    int maxInputChannels;
+    int maxOutputChannels;
+    double defaultSampleRate;
+};
+
 class AudioProcessor {
 public:
     AudioProcessor();
     ~AudioProcessor();
 
-    bool initialize(int sampleRate, int framesPerBuffer, int numChannels);
+    bool initialize(int sampleRate = 44100, int framesPerBuffer = 1024, int numChannels = 2);
     void processAudio();
     bool loadAudioFile(const std::string& filePath);
     void toggleAudioSource();
+    
+    // Device management
+    const std::vector<AudioDevice>& getAvailableDevices() const { return m_availableDevices; }
+    int getCurrentDeviceIndex() const { return m_currentDeviceIndex; }
+    bool switchToDevice(int deviceIndex);
+    
+    // Getters for visualization
     const std::vector<float>& getBandEnergies() const { return m_bandEnergies; }
     const std::vector<float>& getAudioData() const { return m_audioData; }
-
-    // Add getters for visualization parameters
     float getSmoothingFactor() const { return m_smoothingFactor; }
     float getNormalizationFactor() const { return m_normalizationFactor; }
-    void setSmoothingFactor(float factor) { m_smoothingFactor = factor; }
-    void setNormalizationFactor(float factor) { m_normalizationFactor = factor; }
+    
+    // Setters for parameters
+    void setSmoothingFactor(float value) { m_smoothingFactor = value; }
+    void setNormalizationFactor(float value) { m_normalizationFactor = value; }
+
+    // File playback
+    bool hasLoadedFile() const { return m_audioFile != nullptr; }
+    void setFilePlayback(bool play);
+
+    // Device management
+    const std::vector<std::string>& getInputDevices() const { return m_inputDevices; }
+    bool setInputDevice(int deviceIndex);
 
 private:
-    static int paCallback(const void* inputBuffer, void* outputBuffer,
-                          unsigned long framesPerBuffer,
-                          const PaStreamCallbackTimeInfo* timeInfo,
-                          PaStreamCallbackFlags statusFlags,
-                          void* userData);
+    static int paCallback(const void* input, void* output,
+                         unsigned long frameCount,
+                         const PaStreamCallbackTimeInfo* timeInfo,
+                         PaStreamCallbackFlags statusFlags,
+                         void* userData);
 
+    void refreshDeviceList();
+    bool openStream(PaDeviceIndex deviceIndex);
+    void closeStream();
+
+    // Audio stream and processing
     PaStream* m_stream;
     SNDFILE* m_sndFile;
     SF_INFO m_sfInfo;
-    std::vector<float> m_audioData;
-    std::vector<float> m_fftData;
-    std::vector<float> m_bandEnergies;
-    std::vector<float> m_previousBandEnergies;  // For smoothing
-    fftwf_plan m_fftPlan;
     bool m_isPlayingFile;
-
+    
+    // Audio parameters
     int m_sampleRate;
     int m_framesPerBuffer;
     int m_numChannels;
     int m_numBands;
+    
+    // Device management
+    std::vector<AudioDevice> m_availableDevices;
+    int m_currentDeviceIndex;
+    
+    // Processing parameters
+    float m_smoothingFactor;
+    float m_normalizationFactor;
+    
+    // Audio data
+    std::vector<float> m_audioData;
+    std::vector<float> m_fftData;
+    std::vector<float> m_bandEnergies;
+    std::vector<float> m_previousBandEnergies;
+    fftwf_plan m_fftPlan;
+    float* m_fftIn;          // FFT input buffer
+    fftwf_complex* m_fftOut; // FFT output buffer
 
-    // Visualization parameters
-    float m_smoothingFactor;     // Controls how quickly the visualization responds to changes
-    float m_normalizationFactor; // Controls the overall scale of the visualization
+    // File playback
+    std::vector<std::string> m_inputDevices;
+    SNDFILE* m_audioFile;
 };

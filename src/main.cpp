@@ -24,6 +24,108 @@ void framebuffer_size_callback([[maybe_unused]] GLFWwindow* window, int width, i
     glViewport(0, 0, width, height);
 }
 
+void renderUI([[maybe_unused]] GLFWwindow* window, AudioProcessor& audioProcessor, Visualizer& visualizer) {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    // Create a window for controls
+    ImGui::Begin("Audio Visualizer Controls");
+
+    // Audio device selection
+    if (ImGui::CollapsingHeader("Audio Device")) {
+        const auto& devices = audioProcessor.getInputDevices();
+        static int currentDevice = 0;
+        
+        if (ImGui::BeginCombo("Input Device", devices[currentDevice].c_str())) {
+            for (size_t i = 0; i < devices.size(); i++) {
+                bool isSelected = (currentDevice == static_cast<int>(i));
+                if (ImGui::Selectable(devices[i].c_str(), isSelected)) {
+                    currentDevice = static_cast<int>(i);
+                    audioProcessor.setInputDevice(currentDevice);
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    // Visualization style selection
+    if (ImGui::CollapsingHeader("Visualization", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static int currentStyle = static_cast<int>(VisualizationStyle::BAR_GRAPH);
+        const char* styles[] = { "Bar Graph", "Circular", "Wave" };
+        
+        if (ImGui::Combo("Style", &currentStyle, styles, IM_ARRAYSIZE(styles))) {
+            visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
+                                   visualizer.getRotationSpeed(),
+                                   visualizer.getZoomLevel());
+        }
+
+        // Add sliders for visualization parameters
+        float rotationSpeed = visualizer.getRotationSpeed();
+        if (ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 5.0f)) {
+            visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
+                                   rotationSpeed,
+                                   visualizer.getZoomLevel());
+        }
+
+        float zoomLevel = visualizer.getZoomLevel();
+        if (ImGui::SliderFloat("Zoom Level", &zoomLevel, 0.1f, 2.0f)) {
+            visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
+                                   visualizer.getRotationSpeed(),
+                                   zoomLevel);
+        }
+    }
+
+    // Audio processing parameters
+    if (ImGui::CollapsingHeader("Audio Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
+        float smoothing = audioProcessor.getSmoothingFactor();
+        if (ImGui::SliderFloat("Smoothing", &smoothing, 0.0f, 0.95f)) {
+            audioProcessor.setSmoothingFactor(smoothing);
+        }
+        ImGui::SameLine(); 
+        if (ImGui::Button("Reset##1")) {
+            audioProcessor.setSmoothingFactor(0.3f);
+        }
+
+        float normalization = audioProcessor.getNormalizationFactor();
+        if (ImGui::SliderFloat("Gain", &normalization, 0.1f, 20.0f)) {
+            audioProcessor.setNormalizationFactor(normalization);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reset##2")) {
+            audioProcessor.setNormalizationFactor(5.0f);
+        }
+    }
+
+    // File playback controls
+    if (ImGui::CollapsingHeader("File Playback")) {
+        static bool isPlaying = false;  // Use this instead of isPlayingFile
+        
+        if (ImGui::Button("Open Audio File")) {
+            std::string filePath = openFileDialog();
+            if (!filePath.empty()) {
+                audioProcessor.loadAudioFile(filePath);
+                isPlaying = true;
+            }
+        }
+        
+        if (audioProcessor.hasLoadedFile()) {
+            if (ImGui::Button(isPlaying ? "Pause" : "Play")) {
+                isPlaying = !isPlaying;
+                audioProcessor.setFilePlayback(isPlaying);
+            }
+        }
+    }
+
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
 int main() {
     // Initialize GLFW
     if (!glfwInit()) {
@@ -78,73 +180,22 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
-    VisualizationStyle style = VisualizationStyle::BAR_GRAPH;
-    float rotationSpeed = 1.0f;
-    float zoomLevel = 1.0f;
-    bool isPlayingFile = false;
-    std::string audioFilePath;
-
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
         // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+        renderUI(window, audioProcessor, *visualizer);
 
-        // Create ImGui window
-        ImGui::Begin("Audio Visualizer Controls");
-        
-        if (ImGui::RadioButton("Bar Graph", style == VisualizationStyle::BAR_GRAPH)) style = VisualizationStyle::BAR_GRAPH;
-        ImGui::SameLine();
-        if (ImGui::RadioButton("Circular", style == VisualizationStyle::CIRCULAR)) style = VisualizationStyle::CIRCULAR;
-        ImGui::SameLine();
-        if (ImGui::RadioButton("Wave", style == VisualizationStyle::WAVE)) style = VisualizationStyle::WAVE;
-
-        ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 5.0f);
-        ImGui::SliderFloat("Zoom Level", &zoomLevel, 0.1f, 3.0f);
-
-        if (ImGui::Button("Toggle Audio Source")) {
-            audioProcessor.toggleAudioSource();
-            isPlayingFile = !isPlayingFile;
-        }
-
-        ImGui::SameLine();
-        ImGui::Text(isPlayingFile ? "Playing File" : "Live Input");
-
-        if (ImGui::Button("Load Audio File")) {
-            std::string filePath = openFileDialog();
-            if (!filePath.empty()) {
-                if (audioProcessor.loadAudioFile(filePath)) {
-                    std::cout << "Audio file loaded successfully: " << filePath << std::endl;
-                    audioFilePath = filePath;
-                    isPlayingFile = true;
-                    audioProcessor.toggleAudioSource();  // Switch to file playback
-                } else {
-                    std::cerr << "Failed to load audio file: " << filePath << std::endl;
-                }
-            }
-        }
-
-        if (!audioFilePath.empty()) {
-            ImGui::Text("Loaded file: %s", audioFilePath.c_str());
-        }
-
-        ImGui::End();
-
-        // Update audio processor and visualizer
+        // Update audio processor
         audioProcessor.processAudio();
-        visualizer->updateSettings(style, rotationSpeed, zoomLevel);
+        // Visualizer settings are now updated via UI callbacks
+        // visualizer->updateSettings(style, rotationSpeed, zoomLevel); // Removed
 
         // Render
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         visualizer->render();
-
-        // Render ImGui
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
     }

@@ -49,14 +49,33 @@ bool Visualizer::initialize(int width, int height) {
 
 void Visualizer::render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    // Enable blending for smooth transitions
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // Use shader program
     m_shader.use();
 
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)m_width / (float)m_height, 0.1f, 100.0f);
-    glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    m_shader.setMat4("projection", projection);
-    m_shader.setMat4("view", view);
+    // Set up basic matrices
+    glm::mat4 model = glm::mat4(1.0f);
+    glm::mat4 view = glm::lookAt(
+        glm::vec3(0.0f, 0.0f, 3.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+    glm::mat4 projection = glm::ortho(
+        -1.0f * m_width / m_height, 1.0f * m_width / m_height,
+        -1.0f, 1.0f,
+        -1.0f, 100.0f
+    );
 
+    // Set uniforms
+    m_shader.setMat4("model", model);
+    m_shader.setMat4("view", view);
+    m_shader.setMat4("projection", projection);
+
+    // Render based on style
     switch (m_style) {
         case VisualizationStyle::BAR_GRAPH:
             renderBarGraph();
@@ -68,6 +87,9 @@ void Visualizer::render() {
             renderWave();
             break;
     }
+
+    // Disable blending
+    glDisable(GL_BLEND);
 }
 
 void Visualizer::updateSettings(VisualizationStyle style, float rotationSpeed, float zoomLevel) {
@@ -78,59 +100,38 @@ void Visualizer::updateSettings(VisualizationStyle style, float rotationSpeed, f
 
 void Visualizer::renderBarGraph() {
     const std::vector<float>& bandEnergies = m_audioProcessor.getBandEnergies();
-    
-    // Set up viewport and projection with padding
-    glViewport(0, 0, m_width, m_height);
-    float padding = m_width * 0.05f; // 5% padding
-    
-    glm::mat4 projection = glm::ortho(
-        -padding, 
-        (float)m_width + padding, 
-        -padding, 
-        (float)m_height + padding
-    );
-    m_shader.setMat4("projection", projection);
-    
-    // Calculate bar width and spacing
-    float totalWidth = m_width - 2 * padding;
-    float barWidth = totalWidth / (bandEnergies.size() * 2.0f);
-    float spacing = barWidth * 0.5f;
-    
-    // Draw bars with improved visuals
-    float time = glfwGetTime();
-    float baseHeight = m_height * 0.8f; // 80% of screen height
-    
+    if (bandEnergies.empty()) return;
+
+    float barWidth = 1.8f / bandEnergies.size();
+    float spacing = barWidth * 0.2f;
+    float totalWidth = barWidth + spacing;
+    float startX = -0.9f;
+
+    float time = static_cast<float>(glfwGetTime());
+
     for (size_t i = 0; i < bandEnergies.size(); i++) {
-        float x = padding + i * (barWidth + spacing);
+        float x = startX + i * totalWidth;
         float normalizedEnergy = std::min(bandEnergies[i], 1.0f);
         
         // Add smooth animation
-        float wave = sin(time * 1.5f + i * 0.1f) * 0.05f + 0.95f;
-        float height = normalizedEnergy * baseHeight * wave * m_zoomLevel;
+        float wave = sin(time * 2.0f + i * 0.1f) * 0.1f + 0.9f;
+        float height = normalizedEnergy * wave * m_zoomLevel;
         
         // Create gradient color based on frequency and energy
-        float hue = (float)i / bandEnergies.size();
+        float hue = static_cast<float>(i) / bandEnergies.size();
         glm::vec3 color = interpolateColor(hue, normalizedEnergy);
         
-        // Draw bar with rounded corners and glow effect
         float vertices[] = {
-            x, padding, 0.0f, color.r * 0.7f, color.g * 0.7f, color.b * 0.7f,
-            x + barWidth, padding, 0.0f, color.r * 0.7f, color.g * 0.7f, color.b * 0.7f,
-            x + barWidth, height + padding, 0.0f, color.r, color.g, color.b,
-            x, height + padding, 0.0f, color.r, color.g, color.b
+            x,            -0.9f, 0.0f,  color.r * 0.5f, color.g * 0.5f, color.b * 0.5f,  // bottom left
+            x + barWidth, -0.9f, 0.0f,  color.r * 0.5f, color.g * 0.5f, color.b * 0.5f,  // bottom right
+            x + barWidth, -0.9f + height * 1.8f, 0.0f,  color.r, color.g, color.b,        // top right
+            x,            -0.9f + height * 1.8f, 0.0f,  color.r, color.g, color.b         // top left
         };
-        
+
         glBindVertexArray(m_VAO);
         glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-        
-        // Enable blending for glow effect
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        
-        glDisable(GL_BLEND);
     }
 }
 
@@ -281,29 +282,24 @@ void Visualizer::renderWave() {
 }
 
 glm::vec3 Visualizer::interpolateColor(float hue, float energy) {
-    // Enhanced color interpolation with energy-based effects
-    float saturation = 0.7f + energy * 0.3f;  // More subtle saturation range
-    float value = 0.6f + energy * 0.4f;       // Brighter base value
-    
-    // HSV to RGB conversion with improved color transitions
-    float c = value * saturation;
-    float x = c * (1.0f - std::abs(std::fmod(hue * 6.0f, 2.0f) - 1.0f));
-    float m = value - c;
-    
+    // Create a smooth transition between colors based on both hue and energy
     glm::vec3 color;
-    if (hue < 1.0f/6.0f) {
-        color = glm::vec3(c, x, 0.0f);
-    } else if (hue < 2.0f/6.0f) {
-        color = glm::vec3(x, c, 0.0f);
-    } else if (hue < 3.0f/6.0f) {
-        color = glm::vec3(0.0f, c, x);
-    } else if (hue < 4.0f/6.0f) {
-        color = glm::vec3(0.0f, x, c);
-    } else if (hue < 5.0f/6.0f) {
-        color = glm::vec3(x, 0.0f, c);
+    
+    // Use hue to determine the base color
+    float hueNormalized = fmod(hue + energy * 0.2f, 1.0f); // Shift hue slightly based on energy
+    
+    if (hueNormalized < 0.33f) {
+        float t = hueNormalized / 0.33f;
+        color = glm::mix(m_lowColor, m_midColor, t);
+    } else if (hueNormalized < 0.66f) {
+        float t = (hueNormalized - 0.33f) / 0.33f;
+        color = glm::mix(m_midColor, m_highColor, t);
     } else {
-        color = glm::vec3(c, 0.0f, x);
+        float t = (hueNormalized - 0.66f) / 0.33f;
+        color = glm::mix(m_highColor, m_lowColor, t);
     }
     
-    return color + glm::vec3(m);
+    // Add some brightness based on energy
+    float brightness = 0.5f + energy * 0.5f;
+    return color * brightness;
 }

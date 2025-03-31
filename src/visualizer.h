@@ -24,6 +24,11 @@ public:
     void render();
     void updateSettings(VisualizationStyle style, float rotationSpeed, float zoomLevel);
 
+    // Getters for UI
+    float getRotationSpeed() const { return m_rotationSpeed; }
+    float getZoomLevel() const { return m_zoomLevel; }
+    VisualizationStyle getStyle() const { return m_style; }
+
 private:
     void renderBarGraph();
     void renderCircular();

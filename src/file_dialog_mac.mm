@@ -14,28 +14,34 @@
 @end
 
 std::string openFileDialog() {
-    NSOpenPanel* openDlg = [NSOpenPanel openPanel];
-    
-    if (@available(macOS 12.0, *)) {
-        // Modern API for macOS 12.0 and later
-        NSArray* contentTypes = @[
-            UTTypeAudio,
-            UTTypeMP3,
-            UTTypeWAV
-        ];
-        [openDlg setAllowedContentTypes:contentTypes];
-    } else {
-        // Fallback for older macOS versions
-        [openDlg setAllowedFileTypes:@[@"wav", @"mp3", @"ogg"]];
+    @autoreleasepool {
+        NSOpenPanel* openDlg = [NSOpenPanel openPanel];
+        [openDlg setCanChooseFiles:YES];
+        [openDlg setCanChooseDirectories:NO];
+        [openDlg setAllowsMultipleSelection:NO];
+        
+        // Set up allowed file types using modern API if available
+        if (@available(macOS 12.0, *)) {
+            NSMutableArray* allowedTypes = [NSMutableArray array];
+            [allowedTypes addObject:UTTypeAudio];
+            [allowedTypes addObject:[UTType typeWithFilenameExtension:@"wav"]];
+            [allowedTypes addObject:[UTType typeWithFilenameExtension:@"mp3"]];
+            [allowedTypes addObject:[UTType typeWithFilenameExtension:@"ogg"]];
+            openDlg.allowedContentTypes = allowedTypes;
+        } else {
+            // Fallback for older macOS versions
+            [openDlg setAllowedFileTypes:@[@"wav", @"mp3", @"ogg", @"aif", @"aiff", @"m4a"]];
+        }
+        
+        // Set up the file type popup
+        [openDlg setTitle:@"Choose Audio File"];
+        [openDlg setMessage:@"Please select an audio file to visualize"];
+        [openDlg setPrompt:@"Choose"];
+        
+        if ([openDlg runModal] == NSModalResponseOK) {
+            NSURL* fileUrl = [openDlg URL];
+            return std::string([[fileUrl path] UTF8String]);
+        }
+        return "";
     }
-    
-    [openDlg setCanChooseFiles:YES];
-    [openDlg setCanChooseDirectories:NO];
-    
-    if ([openDlg runModal] == NSModalResponseOK) {
-        NSURL* url = [[openDlg URLs] objectAtIndex:0];
-        return std::string([[url path] UTF8String]);
-    }
-    
-    return "";
 }
