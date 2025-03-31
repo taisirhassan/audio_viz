@@ -45,11 +45,21 @@ bool Application::initGLFW() {
         return false;
     }
 
+    // Enable Depth Testing and Face Culling for 3D
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL); // Standard depth comparison
+    glEnable(GL_CULL_FACE); 
+    glCullFace(GL_BACK); // Cull back-facing polygons
+    glFrontFace(GL_CCW); // Define front-facing polygons as counter-clockwise
+
     glfwSwapInterval(1); // Enable vsync
 
     // Store 'this' pointer to access instance members in static callback
     glfwSetWindowUserPointer(m_window, this);
     glfwSetFramebufferSizeCallback(m_window, framebuffer_size_callback_static);
+    glfwSetCursorPosCallback(m_window, cursor_position_callback_static);
+    glfwSetMouseButtonCallback(m_window, mouse_button_callback_static);
+    glfwSetScrollCallback(m_window, scroll_callback_static);
 
     return true;
 }
@@ -216,12 +226,39 @@ void Application::cleanup() {
 
 // --- Callback Handling --- 
 
-// Static callback function
+// Static callback functions
+
 void Application::framebuffer_size_callback_static(GLFWwindow* window, int width, int height) {
-    // Retrieve the Application instance stored in the window's user pointer
     Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
     if (app) {
         app->framebuffer_size_callback(width, height);
+    }
+}
+
+void Application::cursor_position_callback_static(GLFWwindow* window, double xpos, double ypos) {
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    // Forward event to Visualizer, but only if ImGui doesn't want the mouse
+    ImGuiIO& io = ImGui::GetIO();
+    if (app && app->m_visualizer && !io.WantCaptureMouse) {
+        app->m_visualizer->handleMouseMove(xpos, ypos);
+    }
+}
+
+void Application::mouse_button_callback_static(GLFWwindow* window, int button, int action, int mods) {
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    // Forward event to Visualizer if ImGui doesn't want the mouse
+    ImGuiIO& io = ImGui::GetIO();
+    if (app && app->m_visualizer && !io.WantCaptureMouse) {
+        app->m_visualizer->handleMouseButton(button, action, mods);
+    }
+}
+
+void Application::scroll_callback_static(GLFWwindow* window, double xoffset, double yoffset) {
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    // Forward event to Visualizer if ImGui doesn't want the mouse
+    ImGuiIO& io = ImGui::GetIO();
+    if (app && app->m_visualizer && !io.WantCaptureMouse) {
+         app->m_visualizer->handleMouseScroll(xoffset, yoffset);
     }
 }
 

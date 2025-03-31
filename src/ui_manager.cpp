@@ -27,6 +27,14 @@ UIManager::UIManager(AudioProcessor& processor, Visualizer& visualizer)
     // Ensure initial style matches visualizer's default
     m_currentStyle = static_cast<int>(m_visualizer.getStyle());
 
+    // Initialize UI color members from Visualizer defaults
+    glm::vec3 low = m_visualizer.getLowColor();
+    glm::vec3 mid = m_visualizer.getMidColor();
+    glm::vec3 high = m_visualizer.getHighColor();
+    m_uiLowColor[0] = low.x; m_uiLowColor[1] = low.y; m_uiLowColor[2] = low.z;
+    m_uiMidColor[0] = mid.x; m_uiMidColor[1] = mid.y; m_uiMidColor[2] = mid.z;
+    m_uiHighColor[0] = high.x; m_uiHighColor[1] = high.y; m_uiHighColor[2] = high.z;
+
     // Initialize NFD
     NFD_Init();
 }
@@ -116,20 +124,23 @@ void UIManager::render(GLFWwindow* window) {
     ImGui::Text("Colors");
     ImGui::Spacing();
     
-    float lowColor[3] = { m_visualizer.getLowColor().x, m_visualizer.getLowColor().y, m_visualizer.getLowColor().z };
-    float midColor[3] = { m_visualizer.getMidColor().x, m_visualizer.getMidColor().y, m_visualizer.getMidColor().z };
-    float highColor[3] = { m_visualizer.getHighColor().x, m_visualizer.getHighColor().y, m_visualizer.getHighColor().z };
+    // Use the UIManager's member variables for ColorEdit3
+    // float lowColor[3] = { m_visualizer.getLowColor().x, m_visualizer.getLowColor().y, m_visualizer.getLowColor().z };
+    // float midColor[3] = { m_visualizer.getMidColor().x, m_visualizer.getMidColor().y, m_visualizer.getMidColor().z };
+    // float highColor[3] = { m_visualizer.getHighColor().x, m_visualizer.getHighColor().y, m_visualizer.getHighColor().z };
     
     bool colorChanged = false;
-    if (ImGui::ColorEdit3("Low Frequency", lowColor)) { colorChanged = true; }
-    if (ImGui::ColorEdit3("Mid Frequency", midColor)) { colorChanged = true; }
-    if (ImGui::ColorEdit3("High Frequency", highColor)) { colorChanged = true; }
+    // Pass UIManager members to ColorEdit3
+    if (ImGui::ColorEdit3("Low Frequency", m_uiLowColor)) { colorChanged = true; }
+    if (ImGui::ColorEdit3("Mid Frequency", m_uiMidColor)) { colorChanged = true; }
+    if (ImGui::ColorEdit3("High Frequency", m_uiHighColor)) { colorChanged = true; }
     
     if (colorChanged) {
+        // Update Visualizer when UI changes
         m_visualizer.updateColors(
-            glm::vec3(lowColor[0], lowColor[1], lowColor[2]),
-            glm::vec3(midColor[0], midColor[1], midColor[2]),
-            glm::vec3(highColor[0], highColor[1], highColor[2])
+            glm::vec3(m_uiLowColor[0], m_uiLowColor[1], m_uiLowColor[2]),
+            glm::vec3(m_uiMidColor[0], m_uiMidColor[1], m_uiMidColor[2]),
+            glm::vec3(m_uiHighColor[0], m_uiHighColor[1], m_uiHighColor[2])
         );
     }
 

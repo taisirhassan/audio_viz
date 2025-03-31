@@ -5,6 +5,54 @@
 #include <algorithm> // For std::min
 #include <vector>
 #include <iostream> // For error checking
+#include <glm/glm.hpp>
+
+// Define vertices for a unit cube (centered at origin, -0.5 to 0.5)
+// 36 vertices (6 faces * 2 triangles * 3 vertices), 3 floats per vertex (position only)
+const float cubeVertices[] = {
+    // Back face
+    -0.5f, -0.5f, -0.5f, // Bottom-left
+     0.5f,  0.5f, -0.5f, // top-right
+     0.5f, -0.5f, -0.5f, // bottom-right         
+     0.5f,  0.5f, -0.5f, // top-right
+    -0.5f, -0.5f, -0.5f, // bottom-left
+    -0.5f,  0.5f, -0.5f, // top-left
+    // Front face
+    -0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f,  0.5f,
+     0.5f,  0.5f,  0.5f,
+     0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f,  0.5f,
+    -0.5f, -0.5f,  0.5f,
+    // Left face
+    -0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f,  0.5f,
+    -0.5f,  0.5f,  0.5f,
+    // Right face
+     0.5f,  0.5f,  0.5f,
+     0.5f, -0.5f, -0.5f,
+     0.5f,  0.5f, -0.5f,      
+     0.5f, -0.5f, -0.5f,
+     0.5f,  0.5f,  0.5f,
+     0.5f, -0.5f,  0.5f,
+    // Bottom face
+    -0.5f, -0.5f, -0.5f,
+     0.5f, -0.5f, -0.5f,
+     0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f,  0.5f,
+    -0.5f, -0.5f,  0.5f,
+    -0.5f, -0.5f, -0.5f,
+    // Top face
+    -0.5f,  0.5f, -0.5f,
+     0.5f,  0.5f,  0.5f,
+     0.5f,  0.5f, -0.5f,
+     0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f, -0.5f,
+    -0.5f,  0.5f,  0.5f,
+};
 
 // Define the base quad vertices with external linkage
 extern const float quadVertices[] = {
@@ -34,35 +82,34 @@ BarGraphVisualization::~BarGraphVisualization() {
 
 void BarGraphVisualization::init() {
     try {
-        // 1. Compile shaders
-        m_shader = std::make_unique<Shader>("shaders/vertex.glsl", "shaders/fragment.glsl");
+        // 1. Compile 3D shaders
+        m_shader = std::make_unique<Shader>("shaders/bar_graph_3d_vertex.glsl", "shaders/fragment.glsl");
 
-        // 2. Setup VAO and VBO for the base quad
+        // 2. Setup VAO and VBO for the base CUBE
         glGenVertexArrays(1, &m_vao);
         glGenBuffers(1, &m_vbo);
 
         glBindVertexArray(m_vao);
         glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+        // Use cubeVertices now
+        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
 
-        // Position attribute (vec2)
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        // Position attribute (vec3)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0); 
         glBindVertexArray(0);
 
-        // 3. Setup Texture Buffer Object (TBO) for band energies
+        // 3. Setup TBO (remains the same, but pre-allocate size)
+        const size_t MAX_BANDS = 2048; // Define a reasonable max size
         glGenBuffers(1, &m_tbo);
         glBindBuffer(GL_TEXTURE_BUFFER, m_tbo);
-        // We'll buffer the actual data in the render loop
-        glBufferData(GL_TEXTURE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW); // Initialize size later
-
+        // Allocate buffer storage initially
+        glBufferData(GL_TEXTURE_BUFFER, MAX_BANDS * sizeof(float), nullptr, GL_DYNAMIC_DRAW); 
         glGenTextures(1, &m_tboTexture);
         glBindTexture(GL_TEXTURE_BUFFER, m_tboTexture);
-        // Associate the TBO with the texture, using a float format
-        glTexBuffer(GL_TEXTURE_BUFFER, GL_R32F, m_tbo);
-
+        glTexBuffer(GL_TEXTURE_BUFFER, GL_R32F, m_tbo); 
         glBindBuffer(GL_TEXTURE_BUFFER, 0);
         glBindTexture(GL_TEXTURE_BUFFER, 0);
 
@@ -99,30 +146,35 @@ void BarGraphVisualization::cleanup() {
 
 void BarGraphVisualization::render(RenderParameters& params) {
     if (!m_shader || m_vao == 0 || params.bandEnergies.empty()) { 
-        // Not initialized or no data
         return; 
     }
+    // std::cout << "  BarGraphVisualization::render START" << std::endl; // REMOVED DEBUG
 
     const auto& bandEnergies = params.bandEnergies;
     size_t numBars = bandEnergies.size();
 
     m_shader->use();
 
-    // 1. Update TBO with current band energies
+    // 1. Update TBO using glBufferSubData
     glBindBuffer(GL_TEXTURE_BUFFER, m_tbo);
-    // Orphan the old buffer and allocate new storage if size changed, or just update data
-    glBufferData(GL_TEXTURE_BUFFER, bandEnergies.size() * sizeof(float), bandEnergies.data(), GL_DYNAMIC_DRAW);
+    // Ensure we don't write past allocated size (though unlikely with audio data)
+    size_t dataSize = std::min(bandEnergies.size(), (size_t)2048); // Use the MAX_BANDS limit
+    glBufferSubData(GL_TEXTURE_BUFFER, 0, dataSize * sizeof(float), bandEnergies.data());
     glBindBuffer(GL_TEXTURE_BUFFER, 0);
 
-    // 2. Bind TBO texture to the assigned texture unit
-    glActiveTexture(GL_TEXTURE0 + TBO_TEXTURE_UNIT); 
+    // 2. Bind TBO texture (remains the same)
+    glActiveTexture(GL_TEXTURE0 + TBO_TEXTURE_UNIT);
     glBindTexture(GL_TEXTURE_BUFFER, m_tboTexture);
-    m_shader->setInt("bandEnergiesSampler", TBO_TEXTURE_UNIT); // Tell shader which unit TBO is on
+    m_shader->setInt("bandEnergiesSampler", TBO_TEXTURE_UNIT);
 
     // 3. Set uniforms
+    glm::mat4 model = glm::mat4(1.0f); // Simple identity model matrix for now
+    // Optionally rotate or position the whole bar graph setup here
+    // model = glm::rotate(model, glm::radians(some_angle), glm::vec3(0.0f, 1.0f, 0.0f));
+    m_shader->setMat4("model", model); // Pass model matrix
     m_shader->setMat4("view", params.viewMatrix);
     m_shader->setMat4("projection", params.projectionMatrix);
-    m_shader->setFloat("aspectRatio", static_cast<float>(params.screenWidth) / params.screenHeight);
+    m_shader->setFloat("aspectRatio", (params.screenHeight > 0) ? static_cast<float>(params.screenWidth) / params.screenHeight : 1.0f);
     m_shader->setFloat("numBars", static_cast<float>(numBars));
     m_shader->setFloat("zoomLevel", params.zoomLevel);
     m_shader->setFloat("time", params.time);
@@ -130,12 +182,14 @@ void BarGraphVisualization::render(RenderParameters& params) {
     m_shader->setVec3("midColor", params.midColor);
     m_shader->setVec3("highColor", params.highColor);
 
-    // 4. Bind VAO and draw instanced
+    // 4. Bind VAO and draw instanced cubes
     glBindVertexArray(m_vao);
-    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, static_cast<GLsizei>(numBars)); // 6 vertices per quad, numBars instances
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(numBars)); // 36 vertices per cube
 
-    // 5. Unbind
+    // 5. Unbind (remains the same)
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_BUFFER, 0); 
+    glBindTexture(GL_TEXTURE_BUFFER, 0);
     glUseProgram(0);
+
+    // std::cout << "  BarGraphVisualization::render END" << std::endl; // REMOVED DEBUG
 } 

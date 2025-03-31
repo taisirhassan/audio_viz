@@ -1,3 +1,6 @@
+// Define before *any* includes if using experimental GLM headers anywhere
+#define GLM_ENABLE_EXPERIMENTAL
+
 #pragma once
 
 // GLEW must be included before any other OpenGL headers
@@ -8,6 +11,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/string_cast.hpp> // For debugging matrix/vector output
 
 // Standard library and project headers
 #include <vector>
@@ -35,6 +39,11 @@ public:
     void updateSettings(VisualizationStyle style, float rotationSpeed, float zoomLevel);
     void updateColors(const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high);
     void resize(int width, int height);
+
+    // Camera control handlers (to be called by Application callbacks)
+    void handleMouseButton(int button, int action, int mods);
+    void handleMouseMove(double xpos, double ypos);
+    void handleMouseScroll(double xoffset, double yoffset); // Add scroll for zoom/radius
 
     // Getters for UI
     float getRotationSpeed() const { return m_rotationSpeed; }
@@ -79,8 +88,17 @@ private:
     // GLuint m_shaderProgram;
     // Shader m_shader;
 
+    // Camera state for orbit control (Some parts removed for auto-rotation)
+    glm::vec3 m_cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f); // Look at origin
+    glm::vec3 m_cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);     // World up
+    float m_cameraRadius = 3.0f; // Initial distance from target (still used)
+    float m_cameraFov = 45.0f; // Store FOV for projection (still used)
+
     // Customizable colors
     glm::vec3 m_customLowColor = glm::vec3(0.0f, 0.0f, 1.0f); // Default blue
     glm::vec3 m_customMidColor = glm::vec3(0.0f, 1.0f, 0.0f); // Default green
     glm::vec3 m_customHighColor = glm::vec3(1.0f, 0.0f, 0.0f); // Default red
+
+    // Initialization flag
+    bool m_isInitialized = false;
 };

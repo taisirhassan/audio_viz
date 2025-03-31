@@ -27,4 +27,8 @@ private:
     // Potentially move UI state variables here if needed (e.g., current device index)
     int m_currentDeviceIndex = -1; // Initialize to -1 or get from processor
     int m_currentStyle = 0;     // Example
+    // Add members to hold UI color state
+    float m_uiLowColor[3];
+    float m_uiMidColor[3];
+    float m_uiHighColor[3];
 }; 

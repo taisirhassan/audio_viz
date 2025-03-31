@@ -17,6 +17,9 @@ public:
     // Runs the main application loop
     void run();
 
+    // Cleanup function
+    void cleanup();
+
 private:
     // Private helper for initialization steps
     bool initGLFW();
@@ -24,13 +27,15 @@ private:
     bool initImGui();
     bool initModules(); // Initializes AudioProcessor, Visualizer, UIManager
 
-    // Cleanup function
-    void cleanup();
-
     // Callback function - needs to be static or global
     // We'll pass 'this' Application instance via glfwSetWindowUserPointer
     static void framebuffer_size_callback_static(GLFWwindow* window, int width, int height);
     void framebuffer_size_callback(int width, int height); // Instance method
+
+    // Static callback functions (wrappers)
+    static void cursor_position_callback_static(GLFWwindow* window, double xpos, double ypos);
+    static void mouse_button_callback_static(GLFWwindow* window, int button, int action, int mods);
+    static void scroll_callback_static(GLFWwindow* window, double xoffset, double yoffset);
 
     GLFWwindow* m_window = nullptr;
     AudioProcessor* m_audioProcessor = nullptr;
