@@ -40,12 +40,14 @@ public:
     void setNormalizationFactor(float value) { m_normalizationFactor = value; }
 
     // File playback
-    bool hasLoadedFile() const { return m_audioFile != nullptr; }
+    bool hasLoadedFile() const { return m_sndFile != nullptr; }
     void setFilePlayback(bool play);
+    bool isCurrentlyPlayingFile() const;
 
     // Device management
     const std::vector<std::string>& getInputDevices() const { return m_inputDevices; }
     bool setInputDevice(int deviceIndex);
+    void switchToInputDevice();
 
 private:
     static int paCallback(const void* input, void* output,
@@ -55,7 +57,8 @@ private:
                          void* userData);
 
     void refreshDeviceList();
-    bool openStream(PaDeviceIndex deviceIndex);
+    bool openInputStream(PaDeviceIndex inputDeviceIndex, PaDeviceIndex outputDeviceIndex, int sampleRate);
+    bool openFileOutputStream(const SF_INFO& sfInfo);
     void closeStream();
 
     // Audio stream and processing
@@ -73,6 +76,7 @@ private:
     // Device management
     std::vector<AudioDevice> m_availableDevices;
     int m_currentDeviceIndex;
+    int m_activeSampleRate;
     
     // Processing parameters
     float m_smoothingFactor;
@@ -90,4 +94,6 @@ private:
     // File playback
     std::vector<std::string> m_inputDevices;
     SNDFILE* m_audioFile;
+
+    void processFFT();
 };

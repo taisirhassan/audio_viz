@@ -23,11 +23,16 @@ public:
     bool initialize(int width, int height);
     void render();
     void updateSettings(VisualizationStyle style, float rotationSpeed, float zoomLevel);
+    void updateColors(const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high);
+    void resize(int width, int height);
 
     // Getters for UI
     float getRotationSpeed() const { return m_rotationSpeed; }
     float getZoomLevel() const { return m_zoomLevel; }
     VisualizationStyle getStyle() const { return m_style; }
+    glm::vec3 getLowColor() const { return m_customLowColor; }
+    glm::vec3 getMidColor() const { return m_customMidColor; }
+    glm::vec3 getHighColor() const { return m_customHighColor; }
 
 private:
     void renderBarGraph();
@@ -49,8 +54,8 @@ private:
     GLuint m_shaderProgram;
     Shader m_shader;
 
-    // Colors
-    glm::vec3 m_lowColor;
-    glm::vec3 m_midColor;
-    glm::vec3 m_highColor;
+    // Customizable colors
+    glm::vec3 m_customLowColor;
+    glm::vec3 m_customMidColor;
+    glm::vec3 m_customHighColor;
 };

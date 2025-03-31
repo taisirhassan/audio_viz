@@ -19,7 +19,7 @@ if(APPLE)
     
     # Add Homebrew paths
     list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
-    include_directories(${HOMEBREW_PREFIX}/include)
+    include_directories(SYSTEM ${HOMEBREW_PREFIX}/include)
     link_directories(${HOMEBREW_PREFIX}/lib)
     
     set(EXTRA_LIBS
@@ -44,9 +44,9 @@ endif()
 
 # Find required packages
 find_package(OpenGL REQUIRED)
+find_package(PkgConfig REQUIRED)
 
 # Find GLFW
-find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLFW REQUIRED glfw3)
 
 # Find GLEW
@@ -87,13 +87,6 @@ set(IMGUI_SOURCES
     "${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp"
 )
 
-# Verify all ImGui source files exist
-foreach(SOURCE_FILE ${IMGUI_SOURCES})
-    if(NOT EXISTS "${SOURCE_FILE}")
-        message(FATAL_ERROR "ImGui source file not found: ${SOURCE_FILE}")
-    endif()
-endforeach()
-
 # Source files
 set(SOURCES
     src/main.cpp
@@ -130,8 +123,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${OPENGL_LIBRARIES}
-    ${GLFW_LIBRARY}
-    GLEW
+    ${GLFW_LIBRARIES}
+    ${GLEW_LIBRARIES}
     ${GLM_LIBRARIES}
     ${FFTW_LIBRARIES}
     ${PORTAUDIO_LIBRARIES}

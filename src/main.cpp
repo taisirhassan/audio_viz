@@ -7,6 +7,7 @@
 #include "visualizer.h"
 #include <iostream>
 #include <string>
+#include <glm/glm.hpp>
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -21,19 +22,24 @@ Visualizer* visualizer;
 std::string openFileDialog();
 
 void framebuffer_size_callback([[maybe_unused]] GLFWwindow* window, int width, int height) {
-    glViewport(0, 0, width, height);
+    // glViewport(0, 0, width, height); // This is now handled in Visualizer::resize
+    if (visualizer) { // Ensure visualizer is initialized
+        visualizer->resize(width, height);
+    }
 }
 
-void renderUI([[maybe_unused]] GLFWwindow* window, AudioProcessor& audioProcessor, Visualizer& visualizer) {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+void renderUI(GLFWwindow* window, AudioProcessor& audioProcessor, Visualizer& visualizer) {
+    // Set window position and size
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(350, 500), ImGuiCond_FirstUseEver);
 
-    // Create a window for controls
-    ImGui::Begin("Audio Visualizer Controls");
+    // Create a window for controls with specific flags to make it more visible
+    ImGui::Begin("Audio Visualizer Controls", nullptr, 
+        ImGuiWindowFlags_AlwaysAutoResize | 
+        ImGuiWindowFlags_NoCollapse);
 
     // Audio device selection
-    if (ImGui::CollapsingHeader("Audio Device")) {
+    if (ImGui::CollapsingHeader("Audio Device", ImGuiTreeNodeFlags_DefaultOpen)) {
         const auto& devices = audioProcessor.getInputDevices();
         static int currentDevice = 0;
         
@@ -52,31 +58,60 @@ void renderUI([[maybe_unused]] GLFWwindow* window, AudioProcessor& audioProcesso
         }
     }
 
-    // Visualization style selection
-    if (ImGui::CollapsingHeader("Visualization", ImGuiTreeNodeFlags_DefaultOpen)) {
-        static int currentStyle = static_cast<int>(VisualizationStyle::BAR_GRAPH);
-        const char* styles[] = { "Bar Graph", "Circular", "Wave" };
-        
-        if (ImGui::Combo("Style", &currentStyle, styles, IM_ARRAYSIZE(styles))) {
-            visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
-                                   visualizer.getRotationSpeed(),
-                                   visualizer.getZoomLevel());
-        }
+    // Visualization controls - always visible
+    ImGui::Text("Visualization");
+    ImGui::Separator();
+    
+    static int currentStyle = static_cast<int>(VisualizationStyle::BAR_GRAPH);
+    const char* styles[] = { "Bar Graph", "Circular", "Wave" };
+    
+    if (ImGui::Combo("Style", &currentStyle, styles, IM_ARRAYSIZE(styles))) {
+        visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
+                               visualizer.getRotationSpeed(),
+                               visualizer.getZoomLevel());
+    }
 
-        // Add sliders for visualization parameters
-        float rotationSpeed = visualizer.getRotationSpeed();
-        if (ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 5.0f)) {
-            visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
-                                   rotationSpeed,
-                                   visualizer.getZoomLevel());
-        }
+    ImGui::Spacing();
+    float rotationSpeed = visualizer.getRotationSpeed();
+    if (ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 5.0f)) {
+        visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
+                               rotationSpeed,
+                               visualizer.getZoomLevel());
+    }
 
-        float zoomLevel = visualizer.getZoomLevel();
-        if (ImGui::SliderFloat("Zoom Level", &zoomLevel, 0.1f, 2.0f)) {
-            visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
-                                   visualizer.getRotationSpeed(),
-                                   zoomLevel);
-        }
+    float zoomLevel = visualizer.getZoomLevel();
+    if (ImGui::SliderFloat("Zoom Level", &zoomLevel, 0.1f, 2.0f)) {
+        visualizer.updateSettings(static_cast<VisualizationStyle>(currentStyle),
+                               rotationSpeed,
+                               zoomLevel);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("Colors");
+    ImGui::Spacing();
+    
+    float lowColor[3] = { visualizer.getLowColor().x, visualizer.getLowColor().y, visualizer.getLowColor().z };
+    float midColor[3] = { visualizer.getMidColor().x, visualizer.getMidColor().y, visualizer.getMidColor().z };
+    float highColor[3] = { visualizer.getHighColor().x, visualizer.getHighColor().y, visualizer.getHighColor().z };
+    
+    bool colorChanged = false;
+    if (ImGui::ColorEdit3("Low Frequency", lowColor)) { 
+        colorChanged = true; 
+    }
+    if (ImGui::ColorEdit3("Mid Frequency", midColor)) { 
+        colorChanged = true; 
+    }
+    if (ImGui::ColorEdit3("High Frequency", highColor)) { 
+        colorChanged = true; 
+    }
+    
+    if (colorChanged) {
+        visualizer.updateColors(
+            glm::vec3(lowColor[0], lowColor[1], lowColor[2]),
+            glm::vec3(midColor[0], midColor[1], midColor[2]),
+            glm::vec3(highColor[0], highColor[1], highColor[2])
+        );
     }
 
     // Audio processing parameters
@@ -101,29 +136,35 @@ void renderUI([[maybe_unused]] GLFWwindow* window, AudioProcessor& audioProcesso
     }
 
     // File playback controls
-    if (ImGui::CollapsingHeader("File Playback")) {
-        static bool isPlaying = false;  // Use this instead of isPlayingFile
-        
+    if (ImGui::CollapsingHeader("File Playback", ImGuiTreeNodeFlags_DefaultOpen)) {
+        bool fileLoaded = audioProcessor.hasLoadedFile();
+
+        // Always show the Open button
         if (ImGui::Button("Open Audio File")) {
             std::string filePath = openFileDialog();
             if (!filePath.empty()) {
                 audioProcessor.loadAudioFile(filePath);
-                isPlaying = true;
+                fileLoaded = audioProcessor.hasLoadedFile();
             }
         }
         
-        if (audioProcessor.hasLoadedFile()) {
-            if (ImGui::Button(isPlaying ? "Pause" : "Play")) {
-                isPlaying = !isPlaying;
-                audioProcessor.setFilePlayback(isPlaying);
+        if (fileLoaded) {
+            bool isCurrentlyPlaying = audioProcessor.isCurrentlyPlayingFile();
+            ImGui::SameLine();
+            // Show Play/Pause button
+            if (ImGui::Button(isCurrentlyPlaying ? "Pause" : "Play")) {
+                audioProcessor.setFilePlayback(!isCurrentlyPlaying);
+            }
+
+            ImGui::SameLine();
+            // Show Stop button
+            if (ImGui::Button("Stop File & Use Mic")) {
+                audioProcessor.switchToInputDevice();
             }
         }
     }
 
     ImGui::End();
-
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 int main() {
@@ -175,6 +216,30 @@ int main() {
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
+    ImGuiStyle& style = ImGui::GetStyle();
+    
+    // Enhance control responsiveness and visibility
+    style.FrameRounding = 3.0f;
+    style.GrabRounding = 3.0f;
+    style.FrameBorderSize = 1.0f;
+    style.GrabMinSize = 20.0f;  // Make sliders easier to grab
+    style.ItemSpacing = ImVec2(8, 4);
+    style.ItemInnerSpacing = ImVec2(4, 4);
+    style.IndentSpacing = 12.0f;
+    style.ScrollbarSize = 14.0f;
+    style.WindowRounding = 4.0f;
+    style.ChildRounding = 2.0f;
+    style.PopupRounding = 2.0f;
+    
+    // Increase alpha to make controls more visible
+    style.Alpha = 0.9f;
+    style.DisabledAlpha = 0.6f;
+    
+    // Make active elements more visible
+    style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.8f, 0.8f, 0.8f, 0.9f);
+    style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.9f, 0.9f, 0.9f, 1.0f);
+    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.3f, 0.3f, 0.3f, 0.9f);
+    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.4f, 0.4f, 0.4f, 0.9f);
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -184,19 +249,28 @@ int main() {
         glfwPollEvents();
 
         // Start the Dear ImGui frame
-        renderUI(window, audioProcessor, *visualizer);
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
         // Update audio processor
         audioProcessor.processAudio();
-        // Visualizer settings are now updated via UI callbacks
-        // visualizer->updateSettings(style, rotationSpeed, zoomLevel); // Removed
 
-        // Render
+        // Clear the background
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        // Define the UI elements
+        renderUI(window, audioProcessor, *visualizer);
+
+        // Render main visualization
         visualizer->render();
 
+        // Render Dear ImGui
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Swap buffers
         glfwSwapBuffers(window);
     }
 
