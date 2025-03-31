@@ -1,7 +1,6 @@
 # Audio Visualizer
 
-<img width="1198" alt="Screenshot 2024-09-07 at 10 11 25 PM" src="https://github.com/user-attachments/assets/1fef96cf-c949-4931-982e-22b83508bd92">
-
+<img width="1200" alt="Audio Visualizer Screenshot" src="screenshots/audio_viz_screenshot.png">
 
 An interactive real-time audio visualizer built with C++ and OpenGL. This application provides dynamic visualizations of audio input, supporting both live audio and file playback.
 
@@ -15,16 +14,29 @@ This project combines audio processing and graphics rendering to create an engag
 - Multiple visualization styles: Bar Graph, Circular, and Wave
 - Support for both live audio input and audio file playback
 - User-friendly interface with adjustable parameters
+- Native file dialogs for file selection
+- Modular architecture for maintainability and extensibility
 
 ### Technologies Used
 
-- $\textbf{C++}$ for core application logic
-- $\textbf{OpenGL}$ for graphics rendering
-- $\textbf{GLFW}$ for window management and OpenGL context creation
-- $\textbf{Dear ImGui}$ for the graphical user interface
-- $\textbf{PortAudio}$ for real-time audio input/output
-- $\textbf{FFTW}$ for Fast Fourier Transform calculations
-- $\textbf{libsndfile}$ for audio file reading
+- **C++** for core application logic
+- **OpenGL** for graphics rendering
+- **GLFW** for window management and OpenGL context creation
+- **Dear ImGui** for the graphical user interface
+- **PortAudio** for real-time audio input/output
+- **FFTW** for Fast Fourier Transform calculations
+- **libsndfile** for audio file reading
+- **Native File Dialog Extended** for cross-platform file dialogs
+
+## Architecture
+
+The application is designed with a modular architecture that separates concerns:
+
+- **Application**: Main application logic, window management, and event handling
+- **AudioProcessor**: Handles audio input/output, FFT, and audio file playback
+- **Visualizer**: Manages rendering different visualization styles
+- **UIManager**: Handles UI rendering and user input
+- **VisualizationStyles**: Pluggable visualization implementations (Bar Graph, Circular, Wave)
 
 ## Setup and Installation
 
@@ -46,6 +58,19 @@ On macOS, you can install most dependencies using Homebrew:
 brew install cmake glfw glew fftw portaudio libsndfile
 ```
 
+### Additional Dependencies
+
+The project uses some external dependencies that are included as Git submodules:
+
+1. **Dear ImGui**: UI library
+2. **Native File Dialog Extended**: Cross-platform file dialog library
+
+Clone these submodules after cloning the main repository:
+
+```bash
+git submodule update --init --recursive
+```
+
 ### Building the Project
 
 1. Clone the repository:
@@ -54,22 +79,27 @@ brew install cmake glfw glew fftw portaudio libsndfile
    cd audio-visualizer
    ```
 
-2. Create a build directory and navigate into it:
+2. Initialize submodules:
+   ```bash
+   git submodule update --init --recursive
+   ```
+
+3. Create a build directory and navigate into it:
    ```bash
    mkdir build && cd build
    ```
 
-3. Generate the build files with CMake:
+4. Generate the build files with CMake:
    ```bash
    cmake ..
    ```
 
-4. Build the project:
+5. Build the project:
    ```bash
    make
    ```
 
-5. Run the application:
+6. Run the application:
    ```bash
    ./AudioVisualizer
    ```
@@ -78,10 +108,12 @@ brew install cmake glfw glew fftw portaudio libsndfile
 
 Once the application is running:
 
-1. Use the radio buttons to switch between visualization styles.
-2. Adjust the "Rotation Speed" and "Zoom Level" sliders to customize the visualization.
-3. Click "Toggle Audio Source" to switch between live audio input and file playback.
-4. Use the "Load Audio File" button to select and load an audio file for playback.
+1. Use the dropdown menu to select an audio input device
+2. Choose your preferred visualization style (Bar Graph, Circular, or Wave)
+3. Adjust the "Rotation Speed" and "Zoom Level" sliders to customize the visualization
+4. Modify the color scheme using the color pickers
+5. Open the "Audio Processing" section to adjust smoothing and gain parameters
+6. Use the "File Playback" section to open audio files, play/pause, or switch back to microphone input
 
 ## Contributing
 
