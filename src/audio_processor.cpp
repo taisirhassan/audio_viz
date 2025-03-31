@@ -402,63 +402,78 @@ int AudioProcessor::paCallback(const void* inputBuffer, void* outputBuffer,
                                void* userData) {
     AudioProcessor* processor = static_cast<AudioProcessor*>(userData);
     float* out = (float*)outputBuffer;
-    // inputBuffer might be null if we opened an output-only stream for file playback
-    const float* in = (const float*)inputBuffer; 
+    const float* in = (const float*)inputBuffer;
     unsigned long samplesToProcess = framesPerBuffer * processor->m_numChannels;
+    bool hasNewDataForFFT = false;
 
     // Ensure internal buffer matches stream config
     if (processor->m_audioData.size() != samplesToProcess) {
         processor->m_audioData.resize(samplesToProcess, 0.0f);
     }
 
+    // --- Source Handling --- 
     if (processor->m_isPlayingFile && processor->m_sndFile) {
+        // FILE PLAYBACK (ACTIVE)
         sf_count_t count = sf_read_float(processor->m_sndFile, processor->m_audioData.data(), samplesToProcess);
         if (static_cast<unsigned long>(count) < samplesToProcess) {
             // Fill remaining buffer with silence
             for (unsigned long i = count; i < samplesToProcess; ++i) {
                 processor->m_audioData[i] = 0.0f;
             }
-            sf_seek(processor->m_sndFile, 0, SEEK_SET);
+            sf_seek(processor->m_sndFile, 0, SEEK_SET); // Loop for now
+            // If not looping: processor->setFilePlayback(false); // Stop stream internally
         }
         // Copy data from internal buffer (filled from file) to output
         for (unsigned long i = 0; i < samplesToProcess; i++) {
             out[i] = processor->m_audioData[i];
         }
+        hasNewDataForFFT = true;
+
     } else if (in != nullptr) {
-        // Copy live input data to internal buffer AND output buffer
+        // LIVE INPUT (MIC)
+        // This block only runs when switched back to mic (stream has input)
         for (unsigned long i = 0; i < samplesToProcess; i++) {
             processor->m_audioData[i] = in[i];
             out[i] = in[i]; 
         }
+        hasNewDataForFFT = true;
+
     } else {
-        // No input and no file playing (or output-only stream), output silence
+        // FILE PAUSED (or other unexpected state with no input)
+        // Output silence
         for (unsigned long i = 0; i < samplesToProcess; i++) {
-            processor->m_audioData[i] = 0.0f;
+            processor->m_audioData[i] = 0.0f; // Also clear internal buffer for FFT
             out[i] = 0.0f;
         }
+        // hasNewDataForFFT remains false
     }
+    // --- End Source Handling ---
 
-    // FFT Processing (should always happen based on m_audioData)
-    if (processor->m_fftPlan && processor->m_fftIn && processor->m_fftOut) {
+    // --- FFT Processing --- 
+    // Only process FFT if we got new meaningful data (not silence from paused state)
+    if (hasNewDataForFFT && processor->m_fftPlan && processor->m_fftIn && processor->m_fftOut) {
         // Prepare FFT input (use m_audioData)
         for (int i = 0; i < processor->m_framesPerBuffer; ++i) {
             size_t data_index = static_cast<size_t>(i) * processor->m_numChannels;
-            // Use first channel or average if stereo
-             if (processor->m_numChannels == 1) {
+            if (processor->m_numChannels == 1) {
                  processor->m_fftIn[i] = (data_index < processor->m_audioData.size()) ? processor->m_audioData[data_index] : 0.0f;
-             } else if (processor->m_numChannels == 2) {
+            } else if (processor->m_numChannels >= 2) { // Handle stereo or more by averaging first two
                   size_t right_channel_index = data_index + 1;
                   float left = (data_index < processor->m_audioData.size()) ? processor->m_audioData[data_index] : 0.0f;
                   float right = (right_channel_index < processor->m_audioData.size()) ? processor->m_audioData[right_channel_index] : 0.0f;
-                  processor->m_fftIn[i] = (left + right) / 2.0f; // Average stereo channels for FFT
-             } else { // Handle other channel counts if necessary
-                 processor->m_fftIn[i] = (data_index < processor->m_audioData.size()) ? processor->m_audioData[data_index] : 0.0f;
+                  processor->m_fftIn[i] = (left + right) / 2.0f; 
+             } else { 
+                 processor->m_fftIn[i] = 0.0f; // Should not happen with current logic
              }
         }
         fftwf_execute(processor->m_fftPlan);
-        // Process FFT output to get band energies (as before)
-        processor->processFFT(); // Encapsulate FFT processing logic
+        processor->processFFT(); // Process the FFT results into band energies
+    } else if (!hasNewDataForFFT) {
+        // Optional: If paused, explicitly clear band energies for a flat visualization
+        std::fill(processor->m_bandEnergies.begin(), processor->m_bandEnergies.end(), 0.0f);
+        std::fill(processor->m_previousBandEnergies.begin(), processor->m_previousBandEnergies.end(), 0.0f);
     }
+    // --- End FFT Processing --- 
 
     return paContinue;
 }
@@ -521,19 +536,25 @@ void AudioProcessor::setFilePlayback(bool play) {
             std::cerr << "Error stopping stream: " << Pa_GetErrorText(err) << std::endl;
         } else {
             m_isPlayingFile = false;
-            // Optional: Seek back to beginning when pausing/stopping?
-            if (m_sndFile) {
-                sf_seek(m_sndFile, 0, SEEK_SET);
-            }
-            std::cout << "Stream stopped for file playback." << std::endl;
+            // Remove the seek to beginning when pausing
+            // if (m_sndFile) {
+            //     sf_seek(m_sndFile, 0, SEEK_SET);
+            // }
+            std::cout << "Stream stopped (paused) for file playback." << std::endl;
+            
+            // Explicitly clear visualization data when pausing
+            std::fill(m_bandEnergies.begin(), m_bandEnergies.end(), 0.0f);
+            std::fill(m_previousBandEnergies.begin(), m_previousBandEnergies.end(), 0.0f);
         }
     }
     // If play == m_isPlayingFile, do nothing (already in desired state)
 }
 
 void AudioProcessor::switchToInputDevice() {
-    // This function specifically switches back to the last selected *input* device
-    // after file playback has stopped.
+    // Clear visualization data before switching
+    std::fill(m_bandEnergies.begin(), m_bandEnergies.end(), 0.0f);
+    std::fill(m_previousBandEnergies.begin(), m_previousBandEnergies.end(), 0.0f);
+
+    // Switch back to the last selected input device
     setInputDevice(m_currentDeviceIndex); 
-    // setInputDevice already handles stopping file playback and reopening the stream.
 }

@@ -52,6 +52,12 @@ bool Visualizer::initialize(int width, int height) {
 void Visualizer::render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
+    // Check if we should skip rendering visualization (e.g., file loaded but paused)
+    if (m_audioProcessor.hasLoadedFile() && !m_audioProcessor.isCurrentlyPlayingFile()) {
+        // Optionally set a different clear color or do nothing to leave screen blank
+        return; // Skip drawing the visualization elements
+    }
+
     // Enable blending for smooth transitions
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -79,7 +85,7 @@ void Visualizer::render() {
     m_shader.setMat4("view", view);
     m_shader.setMat4("projection", projection);
 
-    // Render based on style
+    // Render based on style (only if not skipped above)
     switch (m_style) {
         case VisualizationStyle::BAR_GRAPH:
             renderBarGraph();
@@ -142,6 +148,11 @@ void Visualizer::renderBarGraph() {
         float bottomY = -1.0f; // Always start at the bottom
         float topY = std::min(1.0f, height); // Clamp top to screen boundary
 
+        // Add check: Skip drawing if bar has no height
+        if (topY <= bottomY + 1e-6) { // Use a small epsilon
+            continue;
+        }
+
         float vertices[] = {
             x,              bottomY, 0.0f,  color.r * 0.5f, color.g * 0.5f, color.b * 0.5f,
             x + totalWidth, bottomY, 0.0f,  color.r * 0.5f, color.g * 0.5f, color.b * 0.5f,
@@ -173,6 +184,12 @@ void Visualizer::renderCircular() {
         
         // More sensitive energy scaling, allow reaching closer to edge, cap lower
         float normalizedEnergy = std::min(bandEnergies[i] * 1.1f, 1.2f) * m_zoomLevel; // Reduced factors
+        
+        // Add check: Skip drawing if energy is negligible
+        if (normalizedEnergy < 0.001f) { 
+            continue;
+        }
+        
         float wave = sin(time * 1.5f + i * 0.1f) * 0.08f + 0.92f; // Slower, less intense wave
         // Scale radius more reasonably
         float currentRadius = baseRadius * (1.0f + normalizedEnergy * wave * 0.6f); // Reduced multiplier
