@@ -12,7 +12,8 @@
 // Standard library and project headers
 #include <vector>
 #include <memory>
-#include "shader.h"
+#include <map> // To store style instances
+// #include "shader.h" // Shader managed by styles now
 #include "audio_processor.h"
 #include "IVisualizationStyle.h"
 
@@ -27,8 +28,10 @@ public:
     Visualizer(AudioProcessor& audioProcessor);
     ~Visualizer();
 
-    bool initialize(int width, int height);
+    // Initialize now simply sets initial style
+    bool initialize(int width, int height, VisualizationStyle initialStyle);
     void render();
+    // Update settings now handles changing the style object if needed
     void updateSettings(VisualizationStyle style, float rotationSpeed, float zoomLevel);
     void updateColors(const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high);
     void resize(int width, int height);
@@ -36,7 +39,7 @@ public:
     // Getters for UI
     float getRotationSpeed() const { return m_rotationSpeed; }
     float getZoomLevel() const { return m_zoomLevel; }
-    VisualizationStyle getStyle() const { return m_style; }
+    VisualizationStyle getStyle() const { return m_currentStyleEnum; } // Return the enum
     glm::vec3 getLowColor() const { return m_customLowColor; }
     glm::vec3 getMidColor() const { return m_customMidColor; }
     glm::vec3 getHighColor() const { return m_customHighColor; }
@@ -45,32 +48,39 @@ public:
     float m_smoothingFactorViz = 0.2f; // Separate from audio processing smoothing
 
 private:
-    // Remove old render methods
-    // void renderBarGraph();
-    // void renderCircular();
-    // void renderWave();
-    // Remove old color helpers if they are now inside the styles
-    // glm::vec3 getColor(float t);
-    // glm::vec3 interpolateColor(float hue, float energy);
+    // Method to change the active visualization style
+    void setStyle(VisualizationStyle newStyle);
 
-    // Add pointer to the current style object
-    std::unique_ptr<IVisualizationStyle> m_currentStylePtr;
+    // Remove old render methods
+    // ... (already removed)
+    // Remove old color helpers
+    // ... (already removed)
 
     AudioProcessor& m_audioProcessor;
-    VisualizationStyle m_style;
-    float m_rotationSpeed;
-    float m_zoomLevel;
+    
+    // Store all styles, but only one is active
+    std::map<VisualizationStyle, std::unique_ptr<IVisualizationStyle>> m_visualizationStyles;
+    IVisualizationStyle* m_currentStylePtr = nullptr; // Raw pointer to the active style
+    VisualizationStyle m_currentStyleEnum;
+
+    // Settings
+    float m_rotationSpeed = 0.0f; // Default value
+    float m_zoomLevel = 1.0f;     // Default value
     int m_width;
     int m_height;
     
-    // OpenGL objects
-    GLuint m_VAO;
-    GLuint m_VBO;
-    GLuint m_shaderProgram;
-    Shader m_shader;
+    // Projection and View matrices (calculated here, passed to styles)
+    glm::mat4 m_projectionMatrix;
+    glm::mat4 m_viewMatrix;
+
+    // OpenGL objects removed (managed by individual styles now)
+    // GLuint m_VAO;
+    // GLuint m_VBO;
+    // GLuint m_shaderProgram;
+    // Shader m_shader;
 
     // Customizable colors
-    glm::vec3 m_customLowColor;
-    glm::vec3 m_customMidColor;
-    glm::vec3 m_customHighColor;
+    glm::vec3 m_customLowColor = glm::vec3(0.0f, 0.0f, 1.0f); // Default blue
+    glm::vec3 m_customMidColor = glm::vec3(0.0f, 1.0f, 0.0f); // Default green
+    glm::vec3 m_customHighColor = glm::vec3(1.0f, 0.0f, 0.0f); // Default red
 };

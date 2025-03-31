@@ -1,14 +1,68 @@
 #version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aColor;
+layout (location = 0) in vec2 aPos; // Base quad vertex position (0-1 range)
 
+// Outputs
 out vec3 Color;
 
-uniform mat4 model;
+// Uniforms
 uniform mat4 view;
 uniform mat4 projection;
+uniform float aspectRatio;
+uniform float numBars;
+uniform float zoomLevel;
+uniform float time;
+uniform vec3 lowColor;
+uniform vec3 midColor;
+uniform vec3 highColor;
+
+// Texture Buffer Object for band energies
+uniform samplerBuffer bandEnergiesSampler;
+
+// Helper function to interpolate color (ported from C++)
+vec3 interpolateColor(float hue, float energy, vec3 lowC, vec3 midC, vec3 highC) {
+    vec3 color;
+    float hueNormalized = mod(hue + energy * 0.2, 1.0);
+    if (hueNormalized < 0.33) {
+        color = mix(lowC, midC, hueNormalized / 0.33);
+    } else if (hueNormalized < 0.66) {
+        color = mix(midC, highC, (hueNormalized - 0.33) / 0.33);
+    } else {
+        color = mix(highC, lowC, (hueNormalized - 0.66) / 0.33);
+    }
+    float brightness = 0.5 + energy * 0.5;
+    return color * brightness;
+}
 
 void main() {
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
-    Color = aColor;
+    // --- Calculate bar properties based on instance ID ---
+    int barIndex = gl_InstanceID;
+    float energy = texelFetch(bandEnergiesSampler, barIndex).r; // Fetch energy from TBO
+    energy = clamp(energy, 0.0, 1.0); // Ensure energy is within [0, 1]
+
+    float barWidth = (aspectRatio * 2.0) / numBars;
+    float spacing = barWidth * 0.05;
+    float totalBarWidth = barWidth - spacing;
+    float startX = -aspectRatio;
+
+    float x = startX + float(barIndex) * barWidth;
+
+    // Apply wave effect and zoom
+    float wave = sin(time * 2.0 + float(barIndex) * 0.1) * 0.1 + 0.9;
+    float height = energy * wave * zoomLevel * 2.0; // Scale height (0 to 2 range approx)
+    height = clamp(height, 0.0, 2.0); // Clamp height to prevent going off-screen
+
+    // Calculate color
+    float hue = float(barIndex) / numBars;
+    vec3 finalColor = interpolateColor(hue, energy, lowColor, midColor, highColor);
+    Color = finalColor; // Pass color to fragment shader
+
+    // --- Transform base quad vertex ---
+    // Map aPos (0-1) to the bar's rectangle
+    vec2 transformedPos = aPos;           // Start with 0-1 quad
+    transformedPos.x *= totalBarWidth;    // Scale width
+    transformedPos.y *= height;           // Scale height
+    transformedPos.x += x;                // Shift to bar's x position
+    transformedPos.y -= 1.0;              // Shift bottom to y = -1
+
+    gl_Position = projection * view * vec4(transformedPos, 0.0, 1.0);
 }

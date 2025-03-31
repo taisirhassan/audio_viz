@@ -1,68 +1,141 @@
 #include <GL/glew.h> // Include GLEW first!
 #include "BarGraphVisualization.h"
+#include "../include/shader.h" // Make sure Shader class is included
 #include <GLFW/glfw3.h> // For glfwGetTime
 #include <algorithm> // For std::min
+#include <vector>
+#include <iostream> // For error checking
+
+// Define the base quad vertices with external linkage
+extern const float quadVertices[] = {
+    // Triangle 1
+    0.0f, 0.0f, // Bottom-left
+    1.0f, 0.0f, // Bottom-right
+    1.0f, 1.0f, // Top-right
+    // Triangle 2
+    1.0f, 1.0f, // Top-right
+    0.0f, 1.0f, // Top-left
+    0.0f, 0.0f  // Bottom-left
+};
 
 BarGraphVisualization::BarGraphVisualization() {
-    // Constructor logic if needed
+    // Constructor: Initialization moved to init()
 }
 
-glm::vec3 BarGraphVisualization::interpolateColor(float hue, float energy, const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high) {
-    glm::vec3 color;
-    float hueNormalized = fmod(hue + energy * 0.2f, 1.0f);
-    if (hueNormalized < 0.33f) {
-        color = glm::mix(low, mid, hueNormalized / 0.33f);
-    } else if (hueNormalized < 0.66f) {
-        color = glm::mix(mid, high, (hueNormalized - 0.33f) / 0.33f);
-    } else {
-        color = glm::mix(high, low, (hueNormalized - 0.66f) / 0.33f);
+BarGraphVisualization::~BarGraphVisualization() {
+    // Destructor: Cleanup moved to cleanup()
+    // Ensure cleanup is called if the object is destroyed before explicit cleanup
+    // Though typically cleanup() should be managed by the Visualizer class
+    if (m_vao != 0) { 
+       // std::cerr << "Warning: BarGraphVisualization destroyed without calling cleanup() first." << std::endl;
+       // cleanup(); // Optionally call cleanup here, but prefer explicit management
     }
-    float brightness = 0.5f + energy * 0.5f;
-    return color * brightness;
+}
+
+void BarGraphVisualization::init() {
+    try {
+        // 1. Compile shaders
+        m_shader = std::make_unique<Shader>("shaders/vertex.glsl", "shaders/fragment.glsl");
+
+        // 2. Setup VAO and VBO for the base quad
+        glGenVertexArrays(1, &m_vao);
+        glGenBuffers(1, &m_vbo);
+
+        glBindVertexArray(m_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+        // Position attribute (vec2)
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0); 
+        glBindVertexArray(0);
+
+        // 3. Setup Texture Buffer Object (TBO) for band energies
+        glGenBuffers(1, &m_tbo);
+        glBindBuffer(GL_TEXTURE_BUFFER, m_tbo);
+        // We'll buffer the actual data in the render loop
+        glBufferData(GL_TEXTURE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW); // Initialize size later
+
+        glGenTextures(1, &m_tboTexture);
+        glBindTexture(GL_TEXTURE_BUFFER, m_tboTexture);
+        // Associate the TBO with the texture, using a float format
+        glTexBuffer(GL_TEXTURE_BUFFER, GL_R32F, m_tbo);
+
+        glBindBuffer(GL_TEXTURE_BUFFER, 0);
+        glBindTexture(GL_TEXTURE_BUFFER, 0);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error initializing BarGraphVisualization: " << e.what() << std::endl;
+        // Handle initialization error appropriately (e.g., set a flag, throw)
+        cleanup(); // Clean up any partially created resources
+        throw; // Re-throw the exception or handle as needed
+    }
+}
+
+void BarGraphVisualization::cleanup() {
+    if (m_shader) {
+        // Shader destructor handles glDeleteProgram
+        m_shader.reset();
+    }
+    if (m_tboTexture != 0) {
+        glDeleteTextures(1, &m_tboTexture);
+        m_tboTexture = 0;
+    }
+    if (m_tbo != 0) {
+        glDeleteBuffers(1, &m_tbo);
+        m_tbo = 0;
+    }
+    if (m_vbo != 0) {
+        glDeleteBuffers(1, &m_vbo);
+        m_vbo = 0;
+    }
+    if (m_vao != 0) {
+        glDeleteVertexArrays(1, &m_vao);
+        m_vao = 0;
+    }
 }
 
 void BarGraphVisualization::render(RenderParameters& params) {
-    const auto& bandEnergies = params.bandEnergies; // Using bandEnergies directly for now
-    if (bandEnergies.empty()) return;
-
-    float aspect = static_cast<float>(params.screenWidth) / params.screenHeight;
-    float barWidth = (aspect * 2.0f) / bandEnergies.size(); // Full width
-    float spacing = barWidth * 0.05f; // Minimal spacing
-    float totalBarWidth = barWidth - spacing;
-    float startX = -aspect; // Start at left edge
-
-    glBindVertexArray(params.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, params.vbo);
-
-    for (size_t i = 0; i < bandEnergies.size(); i++) {
-        float x = startX + i * barWidth;
-        float normalizedEnergy = std::min(bandEnergies[i], 1.0f);
-        
-        float wave = sin(params.time * 2.0f + i * 0.1f) * 0.1f + 0.9f;
-        float height = normalizedEnergy * wave * params.zoomLevel * 2.0f - 1.0f; // Adjusted scale
-        
-        float hue = static_cast<float>(i) / bandEnergies.size();
-        glm::vec3 color = interpolateColor(hue, normalizedEnergy, params.lowColor, params.midColor, params.highColor);
-        
-        float bottomY = -1.0f; // Always start at the bottom
-        float topY = std::min(1.0f, height); // Clamp top
-
-        if (topY <= bottomY + 1e-6) { // Skip zero-height bars
-            continue;
-        }
-
-        // Define vertices for a single bar
-        float vertices[] = {
-            x,               bottomY, 0.0f,  color.r * 0.5f, color.g * 0.5f, color.b * 0.5f, // Bottom left, darker
-            x + totalBarWidth, bottomY, 0.0f,  color.r * 0.5f, color.g * 0.5f, color.b * 0.5f, // Bottom right, darker
-            x + totalBarWidth, topY,    0.0f,  color.r, color.g, color.b,                   // Top right, full color
-            x,               topY,    0.0f,  color.r, color.g, color.b                    // Top left, full color
-        };
-
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    if (!m_shader || m_vao == 0 || params.bandEnergies.empty()) { 
+        // Not initialized or no data
+        return; 
     }
 
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindVertexArray(0);
+    const auto& bandEnergies = params.bandEnergies;
+    size_t numBars = bandEnergies.size();
+
+    m_shader->use();
+
+    // 1. Update TBO with current band energies
+    glBindBuffer(GL_TEXTURE_BUFFER, m_tbo);
+    // Orphan the old buffer and allocate new storage if size changed, or just update data
+    glBufferData(GL_TEXTURE_BUFFER, bandEnergies.size() * sizeof(float), bandEnergies.data(), GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_TEXTURE_BUFFER, 0);
+
+    // 2. Bind TBO texture to the assigned texture unit
+    glActiveTexture(GL_TEXTURE0 + TBO_TEXTURE_UNIT); 
+    glBindTexture(GL_TEXTURE_BUFFER, m_tboTexture);
+    m_shader->setInt("bandEnergiesSampler", TBO_TEXTURE_UNIT); // Tell shader which unit TBO is on
+
+    // 3. Set uniforms
+    m_shader->setMat4("view", params.viewMatrix);
+    m_shader->setMat4("projection", params.projectionMatrix);
+    m_shader->setFloat("aspectRatio", static_cast<float>(params.screenWidth) / params.screenHeight);
+    m_shader->setFloat("numBars", static_cast<float>(numBars));
+    m_shader->setFloat("zoomLevel", params.zoomLevel);
+    m_shader->setFloat("time", params.time);
+    m_shader->setVec3("lowColor", params.lowColor);
+    m_shader->setVec3("midColor", params.midColor);
+    m_shader->setVec3("highColor", params.highColor);
+
+    // 4. Bind VAO and draw instanced
+    glBindVertexArray(m_vao);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, static_cast<GLsizei>(numBars)); // 6 vertices per quad, numBars instances
+
+    // 5. Unbind
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_BUFFER, 0); 
+    glUseProgram(0);
 } 

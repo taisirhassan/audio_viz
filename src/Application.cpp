@@ -39,6 +39,12 @@ bool Application::initGLFW() {
     }
 
     glfwMakeContextCurrent(m_window);
+    if (!initGLEW()) { 
+        std::cerr << "Failed to initialize GLEW after creating context." << std::endl;
+        glfwTerminate(); // Clean up GLFW if GLEW fails
+        return false;
+    }
+
     glfwSwapInterval(1); // Enable vsync
 
     // Store 'this' pointer to access instance members in static callback
@@ -112,8 +118,9 @@ bool Application::initModules() {
     int initialWidth, initialHeight;
     glfwGetFramebufferSize(m_window, &initialWidth, &initialHeight);
     m_visualizer = new Visualizer(*m_audioProcessor);
-    if (!m_visualizer->initialize(initialWidth, initialHeight)) {
+    if (!m_visualizer->initialize(initialWidth, initialHeight, VisualizationStyle::BAR_GRAPH)) { 
         std::cerr << "Failed to initialize visualizer" << std::endl;
+        delete m_audioProcessor; // Clean up previously allocated module
         return false;
     }
 
@@ -130,7 +137,6 @@ bool Application::initModules() {
 
 bool Application::initialize() {
     if (!initGLFW()) return false;
-    if (!initGLEW()) return false;
     if (!initImGui()) return false;
     if (!initModules()) return false;
     return true;

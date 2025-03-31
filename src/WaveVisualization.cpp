@@ -1,72 +1,128 @@
 #include <GL/glew.h> // Include GLEW first!
 #include "WaveVisualization.h"
+#include "../include/shader.h" // Make sure Shader class is included
 #include <GLFW/glfw3.h> // For glfwGetTime
 #include <vector>
 #include <algorithm> // For std::min/max
+#include <iostream>  // For error logging
 
-glm::vec3 WaveVisualization::interpolateColor(float hue, float energy, const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high) {
-    glm::vec3 color;
-    float hueNormalized = fmod(hue + energy * 0.2f, 1.0f);
-    if (hueNormalized < 0.33f) {
-        color = glm::mix(low, mid, hueNormalized / 0.33f);
-    } else if (hueNormalized < 0.66f) {
-        color = glm::mix(mid, high, (hueNormalized - 0.33f) / 0.33f);
-    } else {
-        color = glm::mix(high, low, (hueNormalized - 0.66f) / 0.33f);
+// Define the base line segment vertices (x-coordinates 0 and 1)
+const float lineVertices[] = {
+    0.0f, // x for point 1
+    1.0f  // x for point 2
+};
+
+WaveVisualization::WaveVisualization() {
+    // Constructor: Initialization moved to init()
+}
+
+WaveVisualization::~WaveVisualization() {
+    // Destructor: Cleanup handled by cleanup()
+    if (m_vao != 0) { /* Optional warning */ }
+}
+
+void WaveVisualization::init() {
+    try {
+        // 1. Compile shaders
+        m_shader = std::make_unique<Shader>("shaders/wave_vertex.glsl", "shaders/wave_fragment.glsl");
+
+        // 2. Setup VAO and VBO for the base line segment
+        glGenVertexArrays(1, &m_vao);
+        glGenBuffers(1, &m_vbo);
+
+        glBindVertexArray(m_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(lineVertices), lineVertices, GL_STATIC_DRAW);
+
+        // Position attribute (float)
+        glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+
+        // 3. Setup Texture Buffer Object (TBO) for raw audio data
+        glGenBuffers(1, &m_tbo);
+        glBindBuffer(GL_TEXTURE_BUFFER, m_tbo);
+        glBufferData(GL_TEXTURE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW); // Initialize size later
+
+        glGenTextures(1, &m_tboTexture);
+        glBindTexture(GL_TEXTURE_BUFFER, m_tboTexture);
+        glTexBuffer(GL_TEXTURE_BUFFER, GL_R32F, m_tbo); // Associate TBO with texture (float format)
+
+        glBindBuffer(GL_TEXTURE_BUFFER, 0);
+        glBindTexture(GL_TEXTURE_BUFFER, 0);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error initializing WaveVisualization: " << e.what() << std::endl;
+        cleanup();
+        throw;
     }
-    float brightness = 0.5f + energy * 0.5f;
-    return color * brightness;
+}
+
+void WaveVisualization::cleanup() {
+    if (m_shader) {
+        m_shader.reset();
+    }
+    if (m_tboTexture != 0) {
+        glDeleteTextures(1, &m_tboTexture);
+        m_tboTexture = 0;
+    }
+    if (m_tbo != 0) {
+        glDeleteBuffers(1, &m_tbo);
+        m_tbo = 0;
+    }
+    if (m_vbo != 0) {
+        glDeleteBuffers(1, &m_vbo);
+        m_vbo = 0;
+    }
+    if (m_vao != 0) {
+        glDeleteVertexArrays(1, &m_vao);
+        m_vao = 0;
+    }
 }
 
 void WaveVisualization::render(RenderParameters& params) {
+    if (!m_shader || m_vao == 0 || params.audioData.empty() || params.screenWidth <= 1) {
+        return; // Not initialized, no data, or not enough width for segments
+    }
+
     const auto& audioData = params.audioData;
-    if (audioData.empty()) return;
+    int numSegments = params.screenWidth - 1;
+    if (numSegments <= 0) return;
 
-    float aspect = static_cast<float>(params.screenWidth) / params.screenHeight;
-    
-    std::vector<float> vertices;
-    // Estimate size needed: screenWidth pixels * 6 floats per vertex (pos+color)
-    vertices.reserve(params.screenWidth * 6); 
-    
-    // Calculate step based on potentially varying screen width
-    float step = audioData.size() > 0 ? static_cast<float>(audioData.size()) / params.screenWidth : 0;
-    float amplitudeScale = params.zoomLevel * 0.8f;
-    
-    glBindVertexArray(params.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, params.vbo);
+    m_shader->use();
 
-    for (int i = 0; i < params.screenWidth; i++) {
-        float x = (static_cast<float>(i) / params.screenWidth) * (aspect * 2.0f) - aspect;
-        float t = i * step;
-        int index = static_cast<int>(t);
-        float frac = t - index;
-        
-        float y = 0.0f;
-        if (index < static_cast<int>(audioData.size()) - 1) {
-            y = audioData[index] * (1.0f - frac) + audioData[index + 1] * frac;
-        } else if (index < static_cast<int>(audioData.size())) {
-            y = audioData[index];
-        }
-        
-        float wave = 1.0f + sin(params.time * 1.5f + x * 0.01f) * 0.08f;
-        y *= amplitudeScale * wave * 5.0f;
-        y = std::max(-1.0f, std::min(1.0f, y));
-        
-        float progress = static_cast<float>(i) / params.screenWidth;
-        float energy = std::abs(y);
-        glm::vec3 color = interpolateColor(progress, energy, params.lowColor, params.midColor, params.highColor);
-        
-        vertices.push_back(x); vertices.push_back(y); vertices.push_back(0.0f);
-        vertices.push_back(color.r); vertices.push_back(color.g); vertices.push_back(color.b);
-    }
-    
-    // Only buffer and draw if vertices were generated
-    if (!vertices.empty()) {
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
-        glLineWidth(4.0f);
-        glDrawArrays(GL_LINE_STRIP, 0, vertices.size() / 6);
-    }
+    // 1. Update TBO with current raw audio data
+    glBindBuffer(GL_TEXTURE_BUFFER, m_tbo);
+    glBufferData(GL_TEXTURE_BUFFER, audioData.size() * sizeof(float), audioData.data(), GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_TEXTURE_BUFFER, 0);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindVertexArray(0);
+    // 2. Bind TBO texture
+    glActiveTexture(GL_TEXTURE0 + TBO_TEXTURE_UNIT);
+    glBindTexture(GL_TEXTURE_BUFFER, m_tboTexture);
+    m_shader->setInt("audioDataSampler", TBO_TEXTURE_UNIT);
+
+    // 3. Set uniforms
+    m_shader->setMat4("view", params.viewMatrix);
+    m_shader->setMat4("projection", params.projectionMatrix);
+    m_shader->setFloat("screenWidth", static_cast<float>(params.screenWidth));
+    m_shader->setFloat("aspectRatio", (params.screenHeight > 0) ? static_cast<float>(params.screenWidth) / params.screenHeight : 1.0f);
+    m_shader->setFloat("zoomLevel", params.zoomLevel);
+    m_shader->setFloat("time", params.time);
+    m_shader->setVec3("lowColor", params.lowColor);
+    m_shader->setVec3("midColor", params.midColor);
+    m_shader->setVec3("highColor", params.highColor);
+    m_shader->setInt("audioDataSize", static_cast<int>(audioData.size()));
+
+    // 4. Bind VAO and draw instanced lines
+    glBindVertexArray(m_vao);
+    glLineWidth(4.0f); // Set line width
+    // Draw numSegments instances, each instance uses the 2 vertices from the VBO (0.0f, 1.0f)
+    glDrawArraysInstanced(GL_LINES, 0, 2, numSegments);
+
+    // 5. Unbind
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_BUFFER, 0);
+    glUseProgram(0);
 } 
