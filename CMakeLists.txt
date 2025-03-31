@@ -97,6 +97,7 @@ set(SOURCES
     src/BarGraphVisualization.cpp
     src/CircularVisualization.cpp
     src/WaveVisualization.cpp
+    src/visualization_common.cpp
 )
 
 # Add ImGui sources to the project
@@ -117,6 +118,7 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     GLEW_STATIC
     GL_SILENCE_DEPRECATION
+    GLM_ENABLE_EXPERIMENTAL
 )
 
 # Include directories - Note: GLEW must be first

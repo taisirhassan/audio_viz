@@ -11,7 +11,7 @@ class Shader {
 public:
     unsigned int ID;
 
-    Shader() {}
+    Shader() : ID(0) {}
 
     Shader(const char* vertexPath, const char* fragmentPath) {
         std::string vertexCode;
@@ -33,7 +33,10 @@ public:
             fragmentCode = fShaderStream.str();
         }
         catch (std::ifstream::failure& e) {
-            std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ" << std::endl;
+            std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+            std::cout << "Vertex path: " << vertexPath << ", Fragment path: " << fragmentPath << std::endl;
+            ID = 0;
+            return;
         }
         const char* vShaderCode = vertexCode.c_str();
         const char* fShaderCode = fragmentCode.c_str();
@@ -42,21 +45,49 @@ public:
         vertex = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vertex, 1, &vShaderCode, NULL);
         glCompileShader(vertex);
-        checkCompileErrors(vertex, "VERTEX");
+        if (!checkCompileErrors(vertex, "VERTEX")) {
+            ID = 0;
+            return;
+        }
 
         fragment = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fragment, 1, &fShaderCode, NULL);
         glCompileShader(fragment);
-        checkCompileErrors(fragment, "FRAGMENT");
+        if (!checkCompileErrors(fragment, "FRAGMENT")) {
+            glDeleteShader(vertex);
+            ID = 0;
+            return;
+        }
 
         ID = glCreateProgram();
         glAttachShader(ID, vertex);
         glAttachShader(ID, fragment);
         glLinkProgram(ID);
-        checkCompileErrors(ID, "PROGRAM");
+        if (!checkCompileErrors(ID, "PROGRAM")) {
+            glDeleteShader(vertex);
+            glDeleteShader(fragment);
+            ID = 0;
+            return;
+        }
 
         glDeleteShader(vertex);
         glDeleteShader(fragment);
+        
+        std::cout << "Shader program created successfully. ID: " << ID << std::endl;
+    }
+    
+    ~Shader() {
+        if (ID != 0) {
+            glDeleteProgram(ID);
+        }
+    }
+
+    bool isValid() const {
+        return ID != 0;
+    }
+    
+    unsigned int getID() const {
+        return ID;
     }
 
     void use() { 
@@ -92,7 +123,7 @@ public:
     }
 
 private:
-    void checkCompileErrors(unsigned int shader, std::string type) {
+    bool checkCompileErrors(unsigned int shader, std::string type) {
         int success;
         char infoLog[1024];
         if (type != "PROGRAM") {
@@ -100,6 +131,7 @@ private:
             if (!success) {
                 glGetShaderInfoLog(shader, 1024, NULL, infoLog);
                 std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n" << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+                return false;
             }
         }
         else {
@@ -107,7 +139,9 @@ private:
             if (!success) {
                 glGetProgramInfoLog(shader, 1024, NULL, infoLog);
                 std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n" << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+                return false;
             }
         }
+        return true;
     }
 };

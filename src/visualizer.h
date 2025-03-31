@@ -20,6 +20,9 @@
 // #include "shader.h" // Shader managed by styles now
 #include "audio_processor.h"
 #include "IVisualizationStyle.h"
+#include <unordered_map>
+#include <string>
+#include <array>
 
 enum class VisualizationStyle {
     BAR_GRAPH,
@@ -40,6 +43,9 @@ public:
     void updateColors(const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high);
     void resize(int width, int height);
 
+    // Specific control for Bar Graph mode
+    void setBarGraph3DMode(bool is3D);
+
     // Camera control handlers (to be called by Application callbacks)
     void handleMouseButton(int button, int action, int mods);
     void handleMouseMove(double xpos, double ypos);
@@ -52,9 +58,10 @@ public:
     glm::vec3 getLowColor() const { return m_customLowColor; }
     glm::vec3 getMidColor() const { return m_customMidColor; }
     glm::vec3 getHighColor() const { return m_customHighColor; }
+    IVisualizationStyle* getCurrentStylePtr() const { return m_currentStylePtr; }
 
     // Data for smoothing visualization changes
-    float m_smoothingFactorViz = 0.2f; // Separate from audio processing smoothing
+    // float m_smoothingFactorViz = 0.2f; // Removed, let styles handle smoothing
 
 private:
     // Method to change the active visualization style
@@ -73,26 +80,19 @@ private:
     VisualizationStyle m_currentStyleEnum;
 
     // Settings
-    float m_rotationSpeed = 0.0f; // Default value
-    float m_zoomLevel = 1.0f;     // Default value
+    float m_rotationSpeed = 1.0f;
+    float m_zoomLevel = 1.0f;
     int m_width;
     int m_height;
     
     // Projection and View matrices (calculated here, passed to styles)
-    glm::mat4 m_projectionMatrix;
-    glm::mat4 m_viewMatrix;
-
-    // OpenGL objects removed (managed by individual styles now)
-    // GLuint m_VAO;
-    // GLuint m_VBO;
-    // GLuint m_shaderProgram;
-    // Shader m_shader;
-
-    // Camera state for orbit control (Some parts removed for auto-rotation)
-    glm::vec3 m_cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f); // Look at origin
-    glm::vec3 m_cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);     // World up
-    float m_cameraRadius = 3.0f; // Initial distance from target (still used)
-    float m_cameraFov = 45.0f; // Store FOV for projection (still used)
+    glm::mat4 m_view;             // View matrix (camera position/orientation)
+    // glm::mat4 m_projection;    // REMOVED - Projection is now per-style
+    glm::vec3 m_cameraPos   = glm::vec3(0.0f, 0.0f, 5.0f); // Initial camera position
+    glm::vec3 m_cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 m_cameraUp    = glm::vec3(0.0f, 1.0f, 0.0f);
+    float m_yaw   = -90.0f; // Initial yaw
+    float m_pitch = 0.0f;  // Initial pitch
 
     // Customizable colors
     glm::vec3 m_customLowColor = glm::vec3(0.0f, 0.0f, 1.0f); // Default blue
@@ -101,4 +101,10 @@ private:
 
     // Initialization flag
     bool m_isInitialized = false;
+
+    // Helper to update camera view matrix
+    void updateCameraView();
+
+    // Test triangle rendering for debugging
+    // void drawTestTriangle(); // REMOVED
 };

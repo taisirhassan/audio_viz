@@ -16,7 +16,7 @@ uniform vec3 midColor;
 uniform vec3 highColor;
 
 // Texture Buffer Object for band energies
-uniform samplerBuffer bandEnergiesSampler;
+uniform samplerBuffer energyLevels; // This is the name we're binding to in C++
 
 // Helper function to interpolate color (ported from C++)
 vec3 interpolateColor(float hue, float energy, vec3 lowC, vec3 midC, vec3 highC) {
@@ -36,10 +36,18 @@ vec3 interpolateColor(float hue, float energy, vec3 lowC, vec3 midC, vec3 highC)
 void main() {
     // --- Calculate bar properties based on instance ID ---
     int barIndex = gl_InstanceID;
-    float energy = texelFetch(bandEnergiesSampler, barIndex).r; // Fetch energy from TBO
+    
+    // Safe access
+    int maxBars = int(numBars);
+    if (barIndex >= maxBars) barIndex = maxBars - 1;
+    
+    // Fetch energy from TBO
+    float energy = texelFetch(energyLevels, barIndex).r; 
     energy = clamp(energy, 0.0, 1.0); // Ensure energy is within [0, 1]
 
-    float barWidth = (aspectRatio * 2.0) / numBars;
+    // Use float for calculations
+    float numBarsFloat = numBars;
+    float barWidth = (aspectRatio * 2.0) / numBarsFloat;
     float spacing = barWidth * 0.05;
     float totalBarWidth = barWidth - spacing;
     float startX = -aspectRatio;
@@ -49,10 +57,10 @@ void main() {
     // Apply wave effect and zoom
     float wave = sin(time * 2.0 + float(barIndex) * 0.1) * 0.1 + 0.9;
     float height = energy * wave * zoomLevel * 2.0; // Scale height (0 to 2 range approx)
-    height = clamp(height, 0.0, 2.0); // Clamp height to prevent going off-screen
+    height = max(height, 0.01); // Ensure a minimum height
 
     // Calculate color
-    float hue = float(barIndex) / numBars;
+    float hue = float(barIndex) / numBarsFloat;
     vec3 finalColor = interpolateColor(hue, energy, lowColor, midColor, highColor);
     Color = finalColor; // Pass color to fragment shader
 

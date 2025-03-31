@@ -1,99 +1,102 @@
 #version 330 core
-layout (location = 0) in float aX; // Base line segment vertex x-position (0 or 1)
 
-// Outputs
-out vec3 Color;
+// Input vertex data 
+layout(location = 0) in vec2 position;
 
-// Uniforms
+// Instance ID will be used to position each line segment
+uniform int numSamples;
+uniform float waveScale;
+uniform float time;
+
+// Texture buffer for audio data
+uniform samplerBuffer audioSampler;
+
+// Colors for wave gradient
+uniform vec3 lowColor;
+uniform vec3 midColor; 
+uniform vec3 highColor;
+
+// MVP matrices
+uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
-uniform float screenWidth; // For calculating horizontal positions
-uniform float aspectRatio;
-uniform float zoomLevel;
-uniform float time;
-uniform vec3 lowColor;
-uniform vec3 midColor;
-uniform vec3 highColor;
-uniform int audioDataSize;
 
-// Texture Buffer Object for raw audio data
-uniform samplerBuffer audioDataSampler;
+// Outputs to fragment shader
+out vec3 fragColor;
 
-// Helper function to interpolate color (same as others)
-vec3 interpolateColor(float hue, float energy, vec3 lowC, vec3 midC, vec3 highC) {
-    vec3 color;
-    float hueNormalized = mod(hue + energy * 0.2, 1.0);
-    if (hueNormalized < 0.33) {
-        color = mix(lowC, midC, hueNormalized / 0.33);
-    } else if (hueNormalized < 0.66) {
-        color = mix(midC, highC, (hueNormalized - 0.33) / 0.33);
+// Helper function to interpolate colors based on position and energy
+vec3 interpolateColor(float position, float energy) {
+    // Normalize energy for coloring (clamp to avoid extreme values)
+    float normEnergy = clamp(abs(energy), 0.0, 1.0);
+    
+    // Use both position (x coordinate) and energy for coloring
+    // Position determines basic color choice (low to high freq across x-axis)
+    // Energy affects brightness/intensity
+    
+    // Position-based color (low freq left to high freq right)
+    vec3 baseColor;
+    if (position < 0.33) {
+        // Left side - use low color to mid color
+        float t = position / 0.33;
+        baseColor = mix(lowColor, midColor, t);
+    } else if (position < 0.66) {
+        // Middle - use mid color to high color
+        float t = (position - 0.33) / 0.33;
+        baseColor = mix(midColor, highColor, t);
     } else {
-        color = mix(highC, lowC, (hueNormalized - 0.66) / 0.33);
+        // Right side - use high color back to low color (wrap around)
+        float t = (position - 0.66) / 0.34;
+        baseColor = mix(highColor, lowColor, t);
     }
-    float brightness = 0.5 + energy * 0.5;
-    return color * brightness;
-}
-
-// Helper function to get interpolated audio sample
-float getAudioSample(float t) {
-    if (audioDataSize == 0) return 0.0;
-    int index = int(t);
-    float frac = fract(t);
     
-    // Clamp index to valid range
-    index = clamp(index, 0, audioDataSize - 1);
-    int nextIndex = min(index + 1, audioDataSize - 1);
+    // Energy affects brightness/saturation
+    float brightness = 0.5 + normEnergy * 0.5;
     
-    float sample1 = texelFetch(audioDataSampler, index).r;
-    float sample2 = texelFetch(audioDataSampler, nextIndex).r;
-    
-    return mix(sample1, sample2, frac);
+    return baseColor * brightness;
 }
 
 void main() {
-    // --- Calculate segment properties based on instance ID ---
-    // We draw screenWidth-1 segments. InstanceID goes from 0 to screenWidth-2.
-    int segmentIndex = gl_InstanceID; 
+    // Get instance ID and calculate segment position
+    int segmentIndex = gl_InstanceID;
+    float totalSegments = float(numSamples);
     
-    // Calculate x position in normalized device coordinates (-aspect to +aspect)
-    float x_norm_start = (float(segmentIndex) / (screenWidth - 1.0)) * (aspectRatio * 2.0) - aspectRatio;
-    float x_norm_end = (float(segmentIndex + 1) / (screenWidth - 1.0)) * (aspectRatio * 2.0) - aspectRatio;
-    
-    // Calculate corresponding time 't' in audio samples
-    float step = (audioDataSize > 0) ? float(audioDataSize) / screenWidth : 0.0;
-    float t_start = float(segmentIndex) * step;
-    float t_end = float(segmentIndex + 1) * step;
-
-    // Get audio samples
-    float y_sample_start = getAudioSample(t_start);
-    float y_sample_end = getAudioSample(t_end);
-
-    // Apply effects (scaling, wave)
-    float amplitudeScale = zoomLevel * 0.8 * 5.0; // Combined scale from C++
-    float wave_start = 1.0 + sin(time * 1.5 + x_norm_start * 0.01) * 0.08; // Note: C++ used x, might need adjustment
-    float wave_end = 1.0 + sin(time * 1.5 + x_norm_end * 0.01) * 0.08;
-
-    float y_start = y_sample_start * amplitudeScale * wave_start;
-    float y_end = y_sample_end * amplitudeScale * wave_end;
-
-    // Clamp y values
-    y_start = clamp(y_start, -1.0, 1.0);
-    y_end = clamp(y_end, -1.0, 1.0);
-
-    // Determine current vertex position based on aX (0 or 1)
-    float currentX, currentY;
-    if (aX < 0.5) { // Start of the segment (aX=0)
-        currentX = x_norm_start;
-        currentY = y_start;
-    } else { // End of the segment (aX=1)
-        currentX = x_norm_end;
-        currentY = y_end;
+    // Skip if out of range
+    if (segmentIndex >= numSamples) {
+        gl_Position = vec4(0.0);
+        return;
     }
     
-    // Calculate color (based on start of segment for simplicity)
-    float progress = float(segmentIndex) / (screenWidth - 1.0);
-    float energy = abs(y_start);
-    Color = interpolateColor(progress, energy, lowColor, midColor, highColor);
-
-    gl_Position = projection * view * vec4(currentX, currentY, 0.0, 1.0);
+    // Calculate the horizontal position for this segment
+    float xPosition = (float(segmentIndex) / (totalSegments - 1.0)) * 2.0 - 1.0;
+    
+    // Normalized position (0 to 1) for color interpolation
+    float normalizedPosition = float(segmentIndex) / (totalSegments - 1.0);
+    
+    // Adjust segment for width and spacing
+    float segmentWidth = 2.0 / totalSegments;
+    
+    // Use start or end point of line depending on position.x (0 or 1)
+    float xOffset = 0.0;
+    if (position.x > 0.5) {
+        // This is the end point of the line
+        xOffset = segmentWidth;
+    }
+    
+    // Get audio sample value (scaled for visibility)
+    float audioValue = texelFetch(audioSampler, segmentIndex).r;
+    
+    // Apply some scaling for better visualization
+    audioValue *= waveScale;
+    
+    // Add subtle animation
+    audioValue += 0.05 * sin(10.0 * xPosition + time);
+    
+    // Set position with audio value for height
+    vec4 vertexPosition = vec4(xPosition + xOffset, audioValue, 0.0, 1.0);
+    
+    // Calculate final position using MVP matrices
+    gl_Position = projection * view * model * vertexPosition;
+    
+    // Set color based on both position and audio value
+    fragColor = interpolateColor(normalizedPosition, audioValue);
 } 

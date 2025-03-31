@@ -6,6 +6,7 @@
 #include <vector>
 #include <imgui.h>
 #include <nfd.h>
+#include "BarGraphVisualization.h"
 
 // Include GLFW header for the helper function
 #if defined(_WIN32)
@@ -101,6 +102,26 @@ void UIManager::render(GLFWwindow* window) {
         m_visualizer.updateSettings(static_cast<VisualizationStyle>(m_currentStyle),
                                    m_visualizer.getRotationSpeed(),
                                    m_visualizer.getZoomLevel());
+    }
+
+    // If the current style is BarGraph, show 3D option with better visibility
+    auto currentStyle = m_visualizer.getStyle();
+    if (currentStyle == VisualizationStyle::BAR_GRAPH) {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255)); // Yellow text for emphasis
+        ImGui::Separator();
+        ImGui::Text("Bar Graph Mode:");
+        ImGui::SameLine();
+        
+        // Get the BarGraphVisualization pointer
+        auto barGraph = dynamic_cast<BarGraphVisualization*>(m_visualizer.getCurrentStylePtr());
+        if (barGraph) {
+            bool is3D = barGraph->is3DMode();
+            if (ImGui::Checkbox("Enable 3D Mode", &is3D)) {
+                barGraph->set3DMode(is3D);
+            }
+        }
+        ImGui::PopStyleColor();
+        ImGui::Separator();
     }
 
     ImGui::Spacing();

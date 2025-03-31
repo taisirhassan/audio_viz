@@ -1,7 +1,12 @@
 #version 330 core
-in vec3 Color; // Received from Vertex Shader
+
+// Input from vertex shader
+in vec3 fragColor;
+
+// Output fragment color
 out vec4 FragColor;
 
 void main() {
-    FragColor = vec4(Color, 1.0);
+    // Use color from vertex shader with full opacity
+    FragColor = vec4(fragColor, 1.0);
 } 

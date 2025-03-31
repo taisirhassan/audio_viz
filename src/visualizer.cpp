@@ -17,24 +17,24 @@
 
 Visualizer::Visualizer(AudioProcessor& audioProcessor)
     : m_audioProcessor(audioProcessor),
-      m_visualizationStyles(),
-      m_currentStylePtr(nullptr),
       m_currentStyleEnum(VisualizationStyle::BAR_GRAPH),
+      m_currentStylePtr(nullptr),
+      m_view(glm::mat4(1.0f)),
+      m_cameraPos(0.0f, 2.0f, 5.0f),  // Position camera more directly in front
+      m_cameraFront(glm::normalize(glm::vec3(0.0f, -0.2f, -1.0f))),  // Look at origin with slight downward angle
+      m_cameraUp(0.0f, 1.0f, 0.0f),
+      m_yaw(-90.0f),  // Straight ahead
+      m_pitch(-12.0f),  // Slight downward angle
       m_rotationSpeed(1.0f),
       m_zoomLevel(1.0f),
-      m_width(0), m_height(0),
-      m_projectionMatrix(),
-      m_viewMatrix(),
-      m_cameraTarget(0.0f, 0.0f, 0.0f),
-      m_cameraUp(0.0f, 1.0f, 0.0f),
-      m_cameraRadius(3.0f),
-      m_cameraFov(45.0f),
-      m_customLowColor(0.0f, 0.0f, 1.0f),  // Explicitly initialize blue
-      m_customMidColor(0.0f, 1.0f, 0.0f),  // Explicitly initialize green
-      m_customHighColor(1.0f, 0.0f, 0.0f), // Explicitly initialize red
+      m_customLowColor(0.0f, 0.0f, 1.0f),
+      m_customMidColor(0.0f, 1.0f, 0.0f),
+      m_customHighColor(1.0f, 0.0f, 0.0f),
+      m_width(0),
+      m_height(0),
       m_isInitialized(false)
 {
-    // Default colors are set in the header initializer list now
+    std::cout << "Visualizer Constructor Called" << std::endl;
 }
 
 Visualizer::~Visualizer() {
@@ -96,11 +96,6 @@ bool Visualizer::initialize(int width, int height, VisualizationStyle initialSty
         }
 
         resize(width, height); // Call resize to set initial projection
-        // Initialize camera target and up vector
-        m_cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f); 
-        m_cameraUp = glm::vec3(0.0f, 1.0f, 0.0f); 
-        // Initial view matrix (will be updated in render)
-        // updateCameraView(); // REMOVED CALL - View matrix calculated in render() now
 
     } catch (const std::exception& e) {
         std::cerr << "Error initializing Visualizer or its styles: " << e.what() << std::endl;
@@ -135,49 +130,66 @@ void Visualizer::setStyle(VisualizationStyle newStyle) {
 
 void Visualizer::render() {
     if (!m_isInitialized || !m_currentStylePtr) {
-        return; // No active style or not initialized
+        std::cerr << "Visualizer::render called before initialization or no style set." << std::endl;
+        return;
     }
 
-    // --- Update View Matrix for Auto-Rotation ---
-    // Calculate current rotation angle based on time and speed
-    float currentTime = static_cast<float>(glfwGetTime());
-    float angle = currentTime * m_rotationSpeed * 30.0f; // Adjust multiplier for desired speed
+    // Clear the screen
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Black background
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Calculate camera position for orbiting around Y axis
-    glm::vec3 cameraPos;
-    cameraPos.x = sin(glm::radians(angle)) * m_cameraRadius;
-    cameraPos.y = 0.0f; // Keep camera level
-    cameraPos.z = cos(glm::radians(angle)) * m_cameraRadius;
+    // Get audio data
+    const auto& bandEnergies = m_audioProcessor.getBandEnergies(); 
+    const auto& audioData = m_audioProcessor.getAudioData(); // Need raw audio for Wave style
 
-    m_viewMatrix = glm::lookAt(cameraPos, m_cameraTarget, m_cameraUp);
-    // --- End View Matrix Update ---
+    // DEBUG: Check audio data sizes
+    std::cout << "Visualizer::render - BandEnergies size: " << bandEnergies.size() 
+              << ", AudioData size: " << audioData.size() << std::endl;
 
-    // Prepare render parameters
-    RenderParameters params = {
-        m_audioProcessor.getBandEnergies(),
-        m_audioProcessor.getAudioData(),
-        m_width,
-        m_height,
-        static_cast<float>(glfwGetTime()),
-        m_zoomLevel,
-        m_rotationSpeed,
-        m_customLowColor,
-        m_customMidColor,
-        m_customHighColor,
-        m_smoothingFactorViz,
-        m_viewMatrix, // Use the updated view matrix
-        m_projectionMatrix
+    // Update camera view matrix (for 3D styles)
+    updateCameraView();
+
+    // DEBUG: Print View Matrix
+    std::cout << "Visualizer View Matrix:\n" << glm::to_string(m_view) << std::endl;
+
+    // Prepare render parameters using direct initialization for references
+    RenderParameters params = { 
+        bandEnergies,            // bandEnergies (const reference)
+        audioData,               // audioData (const reference)
+        m_width,                 // screenWidth
+        m_height,                // screenHeight
+        static_cast<float>(glfwGetTime()), // time
+        m_zoomLevel,             // zoomLevel
+        m_rotationSpeed,         // rotationSpeed
+        m_customLowColor,        // lowColor
+        m_customMidColor,        // midColor
+        m_customHighColor,       // highColor
+        0.1f,                    // vizSmoothingFactor (example value)
+        glm::mat4(1.0f)          // default to identity view matrix
     };
-
-    // DEBUG: Check if we have energy data
-    if (params.bandEnergies.empty()) {
-        std::cout << "DEBUG: Visualizer::render - bandEnergies is EMPTY!" << std::endl;
-    } else {
-        // std::cout << "DEBUG: Visualizer::render - bandEnergies size: " << params.bandEnergies.size() << std::endl; // Optional: Log size
+    
+    // Use appropriate view matrix for the visualization style
+    if (m_currentStyleEnum == VisualizationStyle::BAR_GRAPH) {
+        // Only use camera view for 3D Bar Graph
+        BarGraphVisualization* barGraphPtr = dynamic_cast<BarGraphVisualization*>(m_currentStylePtr);
+        if (barGraphPtr && barGraphPtr->is3DMode()) {
+            params.viewMatrix = m_view; // Assign the calculated 3D view matrix
+            std::cout << "Visualizer View Matrix (3D Bar Graph): " << std::endl << glm::to_string(m_view) << std::endl;
+        } // Otherwise, keep the identity matrix from initialization
+    }
+    // For other styles (Circular, Wave), the identity matrix is already set
+    
+    // Render the current style with parameters
+    std::cout << "Visualizer calling style render..." << std::endl;
+    if (m_currentStylePtr) {
+        m_currentStylePtr->render(params); // Pass all parameters
     }
 
-    // Call the render method of the current visualization style
-    m_currentStylePtr->render(params);
+    // Check for GL errors after rendering
+    GLenum err;
+    while((err = glGetError()) != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after Visualizer::render: " << err << std::endl;
+    }
 }
 
 void Visualizer::updateSettings(VisualizationStyle style, float rotationSpeed, float zoomLevel) {
@@ -195,21 +207,32 @@ void Visualizer::updateColors(const glm::vec3& low, const glm::vec3& mid, const 
 }
 
 void Visualizer::resize(int width, int height) {
+    if (width <= 0 || height <= 0) return; 
+
     m_width = width;
     m_height = height;
-    if (height == 0) height = 1; // Prevent division by zero
+    glViewport(0, 0, m_width, m_height);
 
-    glViewport(0, 0, width, height);
-
-    // Update projection matrix for 3D Perspective
-    float aspectRatio = static_cast<float>(width) / height;
-    m_projectionMatrix = glm::perspective(glm::radians(m_cameraFov), // Use FOV member
-                                            aspectRatio,        
-                                            0.1f,               
-                                            100.0f);            
+    // Notify all styles of the resize
+    for (auto const& [styleEnum, stylePtr] : m_visualizationStyles) {
+        if (stylePtr) {
+            stylePtr->resize(width, height);
+        }
+    }
 }
 
-// --- Camera Control Handlers ---
+// --- Camera Handling ---
+
+void Visualizer::updateCameraView() {
+    // FPS-style camera view calculation
+    glm::vec3 front;
+    front.x = cos(glm::radians(m_yaw)) * cos(glm::radians(m_pitch));
+    front.y = sin(glm::radians(m_pitch));
+    front.z = sin(glm::radians(m_yaw)) * cos(glm::radians(m_pitch));
+    m_cameraFront = glm::normalize(front);
+    // Use m_cameraPos and m_cameraFront (no m_cameraTarget)
+    m_view = glm::lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+}
 
 // NOTE: Mouse controls are now disabled as auto-rotation is active
 void Visualizer::handleMouseButton(int /*button*/, int /*action*/, int /* mods */) {
@@ -282,4 +305,18 @@ void Visualizer::handleMouseScroll(double /* xoffset */, double /*yoffset*/) {
     // Update camera view based on new radius
     // updateCameraView(); // Already removed
     */
+}
+
+// --- Specific Bar Graph Control ---
+void Visualizer::setBarGraph3DMode(bool is3D) {
+    // Only attempt if the current style is Bar Graph
+    if (m_currentStyleEnum == VisualizationStyle::BAR_GRAPH && m_currentStylePtr) {
+        // Safely cast the base pointer to the derived type
+        BarGraphVisualization* barGraph = dynamic_cast<BarGraphVisualization*>(m_currentStylePtr);
+        if (barGraph) { // Check if cast was successful
+            barGraph->set3DMode(is3D);
+        } else {
+            std::cerr << "Error: Failed to cast current style pointer to BarGraphVisualization!" << std::endl;
+        }
+    }
 }
