@@ -8,6 +8,8 @@
 #include <vector>
 #include "shader.h"
 #include "audio_processor.h"
+#include "IVisualizationStyle.h"
+#include <memory>
 
 enum class VisualizationStyle {
     BAR_GRAPH,
@@ -34,12 +36,20 @@ public:
     glm::vec3 getMidColor() const { return m_customMidColor; }
     glm::vec3 getHighColor() const { return m_customHighColor; }
 
+    // Data for smoothing visualization changes
+    float m_smoothingFactorViz = 0.2f; // Separate from audio processing smoothing
+
 private:
-    void renderBarGraph();
-    void renderCircular();
-    void renderWave();
-    glm::vec3 getColor(float t);
-    glm::vec3 interpolateColor(float hue, float energy);
+    // Remove old render methods
+    // void renderBarGraph();
+    // void renderCircular();
+    // void renderWave();
+    // Remove old color helpers if they are now inside the styles
+    // glm::vec3 getColor(float t);
+    // glm::vec3 interpolateColor(float hue, float energy);
+
+    // Add pointer to the current style object
+    std::unique_ptr<IVisualizationStyle> m_currentStylePtr;
 
     AudioProcessor& m_audioProcessor;
     VisualizationStyle m_style;

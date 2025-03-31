@@ -92,6 +92,11 @@ set(SOURCES
     src/main.cpp
     src/audio_processor.cpp
     src/visualizer.cpp
+    src/ui_manager.cpp
+    src/Application.cpp
+    src/BarGraphVisualization.cpp
+    src/CircularVisualization.cpp
+    src/WaveVisualization.cpp
 )
 
 # Add ImGui sources to the project
