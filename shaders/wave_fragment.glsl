@@ -7,6 +7,12 @@ in vec3 fragColor;
 out vec4 FragColor;
 
 void main() {
-    // Use color from vertex shader with full opacity
-    FragColor = vec4(fragColor, 1.0);
+    // Add a subtle glow effect by using the alpha channel
+    float alpha = 0.95; // Slightly transparent for glow effect
+    
+    // Add slight color boost and saturation
+    vec3 finalColor = fragColor * 1.1; // Boost colors
+    
+    // Output final color with alpha
+    FragColor = vec4(finalColor, alpha);
 } 

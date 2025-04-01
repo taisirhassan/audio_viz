@@ -10,6 +10,7 @@ uniform float time;
 
 // Texture buffer for audio data
 uniform samplerBuffer audioSampler;
+uniform samplerBuffer audioDataSampler; // Fallback
 
 // Colors for wave gradient
 uniform vec3 lowColor;
@@ -49,10 +50,25 @@ vec3 interpolateColor(float position, float energy) {
         baseColor = mix(highColor, lowColor, t);
     }
     
-    // Energy affects brightness/saturation
-    float brightness = 0.5 + normEnergy * 0.5;
+    // Enhanced energy affects brightness/saturation
+    float brightness = 0.7 + normEnergy * 0.6; // Increased base brightness and range
     
     return baseColor * brightness;
+}
+
+// Helper function to get audio sample, preferring audioSampler
+float getAudioSample(int index) {
+    float sample = 0.0;
+    if (index >= 0 && index < numSamples) {
+        // Prioritize audioSampler
+        // Assuming C++ side binds the TBO to texture unit 0 and sets one of these uniforms
+        sample = texelFetch(audioSampler, index).r;
+        // Fallback could be added here if needed, e.g.:
+        // if (!texture(audioSampler, vec2(0)).r) { // Not a reliable check!
+        //     sample = texelFetch(audioDataSampler, index).r;
+        // }
+    }
+    return sample;
 }
 
 void main() {
@@ -82,14 +98,29 @@ void main() {
         xOffset = segmentWidth;
     }
     
-    // Get audio sample value (scaled for visibility)
-    float audioValue = texelFetch(audioSampler, segmentIndex).r;
+    // Get audio sample value using the helper
+    float audioValue = getAudioSample(segmentIndex);
     
-    // Apply some scaling for better visualization
-    audioValue *= waveScale;
+    // Apply enhanced scaling for better visualization
+    audioValue *= waveScale * 3.0; // Increased scale factor
     
-    // Add subtle animation
-    audioValue += 0.05 * sin(10.0 * xPosition + time);
+    // Add more dynamic animation
+    float timeScale = 2.0;
+    float waveFreq = 15.0;
+    float animAmplitude = 0.1;
+    
+    // Primary wave animation
+    audioValue += animAmplitude * sin(waveFreq * xPosition + time * timeScale);
+    
+    // Secondary wave for more complexity
+    audioValue += animAmplitude * 0.5 * cos(waveFreq * 0.5 * xPosition - time * timeScale * 0.7);
+    
+    // Add subtle vertical offset based on position to create wave-like effect
+    audioValue += 0.15 * sin(normalizedPosition * 3.14159 * 2.0 + time);
+    
+    // Add frequency-based modulation
+    float freqMod = sin(time * 0.5) * 0.5 + 0.5; // 0 to 1 oscillation
+    audioValue *= 1.0 + freqMod * 0.2; // Up to 20% additional amplitude
     
     // Set position with audio value for height
     vec4 vertexPosition = vec4(xPosition + xOffset, audioValue, 0.0, 1.0);
@@ -97,6 +128,11 @@ void main() {
     // Calculate final position using MVP matrices
     gl_Position = projection * view * model * vertexPosition;
     
-    // Set color based on both position and audio value
-    fragColor = interpolateColor(normalizedPosition, audioValue);
+    // Enhanced color interpolation based on audio value and position
+    float energyFactor = abs(audioValue) * 2.0; // Increase color intensity
+    vec3 baseColor = interpolateColor(normalizedPosition, energyFactor);
+    
+    // Add time-based color modulation
+    float colorMod = sin(time * 1.5 + normalizedPosition * 6.28318) * 0.2 + 1.0;
+    fragColor = baseColor * colorMod;
 } 

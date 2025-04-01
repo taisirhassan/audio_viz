@@ -54,6 +54,13 @@ void WaveVisualization::init() {
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
 
+        // Set line width for thicker wave lines
+        glLineWidth(2.0f);
+
+        // Enable line smoothing
+        glEnable(GL_LINE_SMOOTH);
+        glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+
         // --- 3. Setup TBO for audio data ---
         const size_t MAX_SAMPLES = 4096; // Support up to 4096 samples
         std::vector<float> initialTboData(MAX_SAMPLES, 0.0f); // Vector of zeros
@@ -142,11 +149,13 @@ void WaveVisualization::render(RenderParameters& params) {
         return; // No data to render
     }
 
-    // Debug output
-    std::cout << "WaveVisualization::render - "
-              << "numSamples: " << numSamples 
-              << ", screenSize: " << params.screenWidth << "x" << params.screenHeight 
-              << std::endl;
+    // Enable line smoothing for this render pass
+    glEnable(GL_LINE_SMOOTH);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Set line width for this render pass
+    glLineWidth(2.0f);
 
     // Clear any leftover GL errors
     while (glGetError() != GL_NO_ERROR);
@@ -200,7 +209,7 @@ void WaveVisualization::render(RenderParameters& params) {
     glUniform1f(glGetUniformLocation(m_shader->getID(), "waveScale"), waveScale);
     
     // Set time for animations
-    glUniform1f(glGetUniformLocation(m_shader->getID(), "time"), params.time);
+    glUniform1f(glGetUniformLocation(m_shader->getID(), "time"), static_cast<float>(glfwGetTime()));
     
     err = glGetError();
     if (err != GL_NO_ERROR) {
@@ -212,34 +221,23 @@ void WaveVisualization::render(RenderParameters& params) {
     glUniformMatrix4fv(glGetUniformLocation(m_shader->getID(), "view"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
     glUniformMatrix4fv(glGetUniformLocation(m_shader->getID(), "model"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
 
-    // Enable line features for better rendering
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_LINE_SMOOTH);
-    glLineWidth(2.0f);  // Set line width for better visibility
-    
-    // Draw the wave visualization - limit the number of instances to avoid GL_INVALID_VALUE
+    // Bind VAO and draw
     glBindVertexArray(m_vao);
+    glDrawArraysInstanced(GL_LINES, 0, 2, static_cast<GLsizei>(usableSamples - 1));
     
-    // Use a reasonable number of line segments (1024 max)
-    size_t lineSegments = std::min(usableSamples, 1024); 
-    
-    // Make sure we have at least 2 vertices to draw
-    if (lineSegments > 0) {
-        glDrawArraysInstanced(GL_LINES, 0, 2, static_cast<GLsizei>(lineSegments));
-        
-        err = glGetError();
-        if (err != GL_NO_ERROR) {
-            std::cerr << "GL Error after drawing wave visualization: " << err << std::endl;
-        }
+    // Check for errors after drawing
+    err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "GL Error after drawing wave visualization: " << err << std::endl;
     }
-    
-    // Cleanup OpenGL state
-    glLineWidth(1.0f);  // Reset line width to default
+
+    // Reset line width and disable line smoothing
+    glLineWidth(1.0f);
     glDisable(GL_LINE_SMOOTH);
     glDisable(GL_BLEND);
-    
+
+    // Unbind everything
     glBindVertexArray(0);
-    glUseProgram(0);
     glBindTexture(GL_TEXTURE_BUFFER, 0);
+    glUseProgram(0);
 } 

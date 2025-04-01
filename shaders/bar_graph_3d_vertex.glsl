@@ -82,11 +82,5 @@ void main() {
     float hue = float(barIndex) / numBarsFloat;
     vec3 finalColor = interpolateColor(hue, energy);
 
-    // **** DIAGNOSTIC: Make bar MAGENTA if energy is very low ****
-    if (energy < 0.01) { 
-        finalColor = vec3(1.0, 0.0, 1.0); // Magenta if flat
-    }
-    // **** END DIAGNOSTIC ****
-
     Color = finalColor;
 } 

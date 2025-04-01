@@ -1,6 +1,3 @@
-// Define before *any* includes if using experimental GLM headers anywhere
-#define GLM_ENABLE_EXPERIMENTAL
-
 #pragma once
 
 // GLEW must be included before any other OpenGL headers
@@ -43,6 +40,16 @@ public:
     void updateColors(const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high);
     void resize(int width, int height);
 
+    // Style management
+    void setStyle(VisualizationStyle newStyle);
+    void setRotationSpeed(float speed) { m_rotationSpeed = speed; }
+    void setZoomLevel(float zoom) { m_zoomLevel = zoom; }
+    void setColors(const glm::vec3& low, const glm::vec3& mid, const glm::vec3& high) {
+        m_customLowColor = low;
+        m_customMidColor = mid;
+        m_customHighColor = high;
+    }
+
     // Specific control for Bar Graph mode
     void setBarGraph3DMode(bool is3D);
 
@@ -65,13 +72,6 @@ public:
 
 private:
     // Method to change the active visualization style
-    void setStyle(VisualizationStyle newStyle);
-
-    // Remove old render methods
-    // ... (already removed)
-    // Remove old color helpers
-    // ... (already removed)
-
     AudioProcessor& m_audioProcessor;
     
     // Store all styles, but only one is active

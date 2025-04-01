@@ -176,17 +176,26 @@ bool Application::initModules() {
 // --- Main Initialization --- 
 
 bool Application::initialize() {
-    if (!initGLFW()) {
+    if (!initGLFW() || !initGLEW()) {
         return false;
     }
-
-    if (!initImGui()) {
-        return false;
+    
+    // Initialize ImGui AFTER GLFW and GLEW
+    if (!initImGui()) { 
+        return false; 
     }
-
+    
+    // Initialize Modules (Audio, Visualizer, UI)
     if (!initModules()) {
         return false;
     }
+    
+    // *** Load ImGui Settings AFTER UIManager registers its handler ***
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantSaveIniSettings) { // Check if ini saving is enabled
+        ImGui::LoadIniSettingsFromDisk(io.IniFilename);
+    }
+    // ***************************************************************
 
     // Configure global OpenGL state
     glEnable(GL_DEPTH_TEST);

@@ -23,19 +23,15 @@
 UIManager::UIManager(AudioProcessor& processor, Visualizer& visualizer)
     : m_audioProcessor(processor),
       m_visualizer(visualizer),
-      m_currentDeviceIndex(processor.getCurrentDeviceIndex()) // Initialize with actual current device
+      m_currentDeviceIndex(processor.getCurrentDeviceIndex()),
+      m_selectedDeviceIndex(0),
+      m_selectedStyleIndex(0),
+      m_rotationSpeed(1.0f),
+      m_zoomLevel(1.0f),
+      m_lowColor(0.0f, 0.0f, 1.0f),
+      m_midColor(0.0f, 1.0f, 0.0f),
+      m_highColor(1.0f, 0.0f, 0.0f)
 {
-    // Ensure initial style matches visualizer's default
-    m_currentStyle = static_cast<int>(m_visualizer.getStyle());
-
-    // Initialize UI color members from Visualizer defaults
-    glm::vec3 low = m_visualizer.getLowColor();
-    glm::vec3 mid = m_visualizer.getMidColor();
-    glm::vec3 high = m_visualizer.getHighColor();
-    m_uiLowColor[0] = low.x; m_uiLowColor[1] = low.y; m_uiLowColor[2] = low.z;
-    m_uiMidColor[0] = mid.x; m_uiMidColor[1] = mid.y; m_uiMidColor[2] = mid.z;
-    m_uiHighColor[0] = high.x; m_uiHighColor[1] = high.y; m_uiHighColor[2] = high.z;
-
     // Initialize NFD
     NFD_Init();
 }
@@ -43,14 +39,19 @@ UIManager::UIManager(AudioProcessor& processor, Visualizer& visualizer)
 UIManager::~UIManager() {
     // Cleanup NFD
     NFD_Quit();
+    std::cout << "UIManager destructed." << std::endl;
+}
+
+void UIManager::loadSettings() {
+    // For now, just initialize with defaults
+    m_visualizer.setStyle(static_cast<VisualizationStyle>(m_selectedStyleIndex));
+    m_visualizer.setColors(m_lowColor, m_midColor, m_highColor);
+    m_visualizer.setRotationSpeed(m_rotationSpeed);
+    m_visualizer.setZoomLevel(m_zoomLevel);
 }
 
 void UIManager::render(GLFWwindow* window) {
-    // Note: The 'window' parameter is currently unused in the ImGui logic
-    // but kept for potential future use (e.g., interactions specific to the window)
-    (void)window; // Explicitly mark as unused to suppress warnings
-
-    // Set window position and size (same as before)
+    // Set window position and size
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(350, 500), ImGuiCond_FirstUseEver);
 
@@ -61,22 +62,23 @@ void UIManager::render(GLFWwindow* window) {
     // Audio device selection
     if (ImGui::CollapsingHeader("Audio Device", ImGuiTreeNodeFlags_DefaultOpen)) {
         const auto& devices = m_audioProcessor.getInputDevices();
-        // Use member variable m_currentDeviceIndex
-        if (!devices.empty()) { // Add check for empty devices list
-             // Ensure m_currentDeviceIndex is valid
+        if (!devices.empty()) {
             if (m_currentDeviceIndex < 0 || m_currentDeviceIndex >= static_cast<int>(devices.size())) {
-                m_currentDeviceIndex = m_audioProcessor.getCurrentDeviceIndex(); // Reset if invalid
-                 if (m_currentDeviceIndex < 0 || m_currentDeviceIndex >= static_cast<int>(devices.size())) {
-                     m_currentDeviceIndex = 0; // Default to 0 if still invalid
-                 }
+                m_currentDeviceIndex = m_audioProcessor.getCurrentDeviceIndex();
+                if (m_currentDeviceIndex < 0 || m_currentDeviceIndex >= static_cast<int>(devices.size())) {
+                    m_currentDeviceIndex = 0;
+                }
             }
 
-            const char* currentDeviceName = (m_currentDeviceIndex >= 0 && m_currentDeviceIndex < static_cast<int>(devices.size())) ? devices[m_currentDeviceIndex].c_str() : "No Device";
+            const char* currentDeviceName = (m_currentDeviceIndex >= 0 && m_currentDeviceIndex < static_cast<int>(devices.size())) 
+                ? devices[m_currentDeviceIndex].c_str() 
+                : "No Device";
+
             if (ImGui::BeginCombo("Input Device", currentDeviceName)) {
                 for (size_t i = 0; i < devices.size(); i++) {
                     bool isSelected = (m_currentDeviceIndex == static_cast<int>(i));
                     if (ImGui::Selectable(devices[i].c_str(), isSelected)) {
-                        if (m_currentDeviceIndex != static_cast<int>(i)) { // Only switch if changed
+                        if (m_currentDeviceIndex != static_cast<int>(i)) {
                            m_currentDeviceIndex = static_cast<int>(i);
                            m_audioProcessor.setInputDevice(m_currentDeviceIndex);
                         }
@@ -88,7 +90,7 @@ void UIManager::render(GLFWwindow* window) {
                 ImGui::EndCombo();
             }
         } else {
-             ImGui::Text("No input devices found.");
+            ImGui::Text("No input devices found.");
         }
     }
 
@@ -96,12 +98,10 @@ void UIManager::render(GLFWwindow* window) {
     ImGui::Text("Visualization");
     ImGui::Separator();
     
-    // Use member variable m_currentStyle
     const char* styles[] = { "Bar Graph", "Circular", "Wave" };
-    if (ImGui::Combo("Style", &m_currentStyle, styles, IM_ARRAYSIZE(styles))) {
-        m_visualizer.updateSettings(static_cast<VisualizationStyle>(m_currentStyle),
-                                   m_visualizer.getRotationSpeed(),
-                                   m_visualizer.getZoomLevel());
+    if (ImGui::Combo("Style", &m_selectedStyleIndex, styles, IM_ARRAYSIZE(styles))) {
+        m_visualizer.setStyle(static_cast<VisualizationStyle>(m_selectedStyleIndex));
+        std::cout << "UI: Switched style to " << styles[m_selectedStyleIndex] << std::endl;
     }
 
     // If the current style is BarGraph, show 3D option with better visibility
@@ -112,7 +112,6 @@ void UIManager::render(GLFWwindow* window) {
         ImGui::Text("Bar Graph Mode:");
         ImGui::SameLine();
         
-        // Get the BarGraphVisualization pointer
         auto barGraph = dynamic_cast<BarGraphVisualization*>(m_visualizer.getCurrentStylePtr());
         if (barGraph) {
             bool is3D = barGraph->is3DMode();
@@ -125,54 +124,37 @@ void UIManager::render(GLFWwindow* window) {
     }
 
     ImGui::Spacing();
-    float rotationSpeed = m_visualizer.getRotationSpeed();
-    if (ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 5.0f)) {
-        m_visualizer.updateSettings(static_cast<VisualizationStyle>(m_currentStyle),
-                               rotationSpeed,
-                               m_visualizer.getZoomLevel());
+    if (ImGui::SliderFloat("Rotation Speed", &m_rotationSpeed, 0.0f, 5.0f)) {
+        m_visualizer.setRotationSpeed(m_rotationSpeed);
     }
 
-    float zoomLevel = m_visualizer.getZoomLevel();
-    if (ImGui::SliderFloat("Zoom Level", &zoomLevel, 0.1f, 2.0f)) {
-        m_visualizer.updateSettings(static_cast<VisualizationStyle>(m_currentStyle),
-                               rotationSpeed,
-                               zoomLevel);
+    if (ImGui::SliderFloat("Zoom Level", &m_zoomLevel, 0.1f, 2.0f)) {
+        m_visualizer.setZoomLevel(m_zoomLevel);
     }
 
-    // Colors Section (same as before, using m_visualizer directly)
+    // Colors Section
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Text("Colors");
     ImGui::Spacing();
     
-    // Use the UIManager's member variables for ColorEdit3
-    // float lowColor[3] = { m_visualizer.getLowColor().x, m_visualizer.getLowColor().y, m_visualizer.getLowColor().z };
-    // float midColor[3] = { m_visualizer.getMidColor().x, m_visualizer.getMidColor().y, m_visualizer.getMidColor().z };
-    // float highColor[3] = { m_visualizer.getHighColor().x, m_visualizer.getHighColor().y, m_visualizer.getHighColor().z };
-    
     bool colorChanged = false;
-    // Pass UIManager members to ColorEdit3
-    if (ImGui::ColorEdit3("Low Frequency", m_uiLowColor)) { colorChanged = true; }
-    if (ImGui::ColorEdit3("Mid Frequency", m_uiMidColor)) { colorChanged = true; }
-    if (ImGui::ColorEdit3("High Frequency", m_uiHighColor)) { colorChanged = true; }
+    if (ImGui::ColorEdit3("Low Frequency", &m_lowColor[0])) { colorChanged = true; }
+    if (ImGui::ColorEdit3("Mid Frequency", &m_midColor[0])) { colorChanged = true; }
+    if (ImGui::ColorEdit3("High Frequency", &m_highColor[0])) { colorChanged = true; }
     
     if (colorChanged) {
-        // Update Visualizer when UI changes
-        m_visualizer.updateColors(
-            glm::vec3(m_uiLowColor[0], m_uiLowColor[1], m_uiLowColor[2]),
-            glm::vec3(m_uiMidColor[0], m_uiMidColor[1], m_uiMidColor[2]),
-            glm::vec3(m_uiHighColor[0], m_uiHighColor[1], m_uiHighColor[2])
-        );
+        m_visualizer.setColors(m_lowColor, m_midColor, m_highColor);
     }
 
-    // Audio processing parameters (same as before, using m_audioProcessor directly)
+    // Audio processing parameters
     if (ImGui::CollapsingHeader("Audio Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
         float smoothing = m_audioProcessor.getSmoothingFactor();
         if (ImGui::SliderFloat("Smoothing", &smoothing, 0.0f, 0.95f)) {
             m_audioProcessor.setSmoothingFactor(smoothing);
         }
         ImGui::SameLine(); 
-        if (ImGui::Button("Reset##Smoothing")) { // Unique ID for Reset
+        if (ImGui::Button("Reset##Smoothing")) {
             m_audioProcessor.setSmoothingFactor(0.3f);
         }
 
@@ -181,23 +163,21 @@ void UIManager::render(GLFWwindow* window) {
             m_audioProcessor.setNormalizationFactor(normalization);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Reset##Gain")) { // Unique ID for Reset
+        if (ImGui::Button("Reset##Gain")) {
             m_audioProcessor.setNormalizationFactor(5.0f);
         }
     }
 
-    // File playback controls (using m_audioProcessor directly)
+    // File playback controls
     if (ImGui::CollapsingHeader("File Playback", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::Button("Open Audio File")) {
             nfdu8char_t *outPath = NULL;
             nfdu8filteritem_t filterItem[1] = { { "Audio Files", "wav,mp3,ogg,aiff,flac,m4a" } };
             
-            // Prepare arguments for NFD
             nfdopendialognargs_t args = {0};
             args.filterList = filterItem;
             args.filterCount = 1;
             
-            // Use the helper function from nfd_glfw3.h to get the native window handle
             bool handleOk = NFD_GetNativeWindowFromGLFWWindow(window, &args.parentWindow);
             if (!handleOk) {
                 std::cerr << "Error getting native window handle" << std::endl;
@@ -207,11 +187,11 @@ void UIManager::render(GLFWwindow* window) {
             
             if (result == NFD_OKAY) {
                 std::cout << "NFD Success! Path: " << outPath << std::endl;
-                std::string pathStr = outPath; // Convert to std::string
+                std::string pathStr = outPath;
                 if (!pathStr.empty()) {
                     m_audioProcessor.loadAudioFile(pathStr);
                 }
-                NFD_FreePathN(outPath); // Remember to free the path!
+                NFD_FreePathN(outPath);
             } else if (result == NFD_CANCEL) {
                 std::cout << "User pressed cancel." << std::endl;
             } else {
@@ -220,7 +200,6 @@ void UIManager::render(GLFWwindow* window) {
         }
 
         ImGui::SameLine();
-        // Add Play/Pause/Stop buttons (using AudioProcessor state)
         if (m_audioProcessor.hasLoadedFile()) {
             if (m_audioProcessor.isCurrentlyPlayingFile()) {
                 if (ImGui::Button("Pause")) {
@@ -233,7 +212,7 @@ void UIManager::render(GLFWwindow* window) {
             }
             ImGui::SameLine();
             if (ImGui::Button("Stop File & Use Mic")) {
-                m_audioProcessor.switchToInputDevice(); // This now also stops playback
+                m_audioProcessor.switchToInputDevice();
             }
         }
     }
